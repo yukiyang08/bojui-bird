@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>不揪鳥排行榜</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, "Segoe UI", "PingFang TC", sans-serif; margin: 0; padding: 16px; background: #f5f5f5; color: #222; }
+  h1 { font-size: 18px; text-align: center; margin: 8px 0 20px; }
+  .board { background: #fff; border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .board h2 { font-size: 15px; margin: 4px 0 10px; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid #eee; }
+  .row:first-child { border-top: none; }
+  .name { color: #444; }
+  .pts { font-weight: 600; }
+  .merit .pts { color: #2a9d5c; }
+  .sinner .pts { color: #d64545; }
+  .msg { text-align: center; color: #888; margin-top: 40px; }
+</style>
+</head>
+<body>
+<h1>不揪鳥排行榜</h1>
+<div id="app"><p class="msg">載入中…</p></div>
+
+<script>
+async function main() {
+  const app = document.getElementById("app");
+  const cfg = await fetch("/api/config").then(r => r.json());
+  if (!cfg.liffId) {
+    app.innerHTML = '<p class="msg">尚未設定 LIFF_ID</p>';
+    return;
+  }
+  await liff.init({ liffId: cfg.liffId });
+
+  const ctx = liff.getContext();
+  if (!ctx || ctx.type !== "group") {
+    app.innerHTML = '<p class="msg">請從群組聊天室開啟這個頁面</p>';
+    return;
+  }
+
+  const data = await fetch(`/api/leaderboard/${ctx.groupId}`).then(r => r.json());
+  app.innerHTML = renderBoard("功德榜（點數最低）", data.merit, "merit")
+                 + renderBoard("罪人榜（點數最高）", data.sinner, "sinner");
+}
+
+function renderBoard(title, members, cls) {
+  const rows = members.length
+    ? members.map((m, i) =>
+        `<div class="row"><span class="name">${i + 1}. ${escapeHtml(m.display_name)}</span><span class="pts">${m.total_points} 點</span></div>`
+      ).join("")
+    : '<p class="msg">還沒有紀錄</p>';
+  return `<div class="board ${cls}"><h2>${title}</h2>${rows}</div>`;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+main().catch(err => {
+  document.getElementById("app").innerHTML = `<p class="msg">載入失敗：${err.message}</p>`;
+});
+</script>
+</body>
+</html>
