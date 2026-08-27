@@ -22,3 +22,6 @@ services:
       # 前後端同一個服務不用填；之後若把前端搬去別的網域再設
       - key: ALLOWED_ORIGINS
         value: ""
+      # @不揪鳥 閒聊用；多把 key 逗號分隔，爆了自動換。留空＝關閉閒聊
+      - key: GEMINI_API_KEYS
+        sync: false

@@ -1,5 +1,6 @@
 import os
 
+from app import gemini
 from app.logic import (
     BOT_MEMBER_ID,
     build_liff_payload,
@@ -320,12 +321,16 @@ def handle_message(client, event: dict) -> str | None:
 
     if mention_targets_self(message):
         # 不揪鳥可以被加減分（會上排行榜），但每次都提醒它不出錢
-        if delta is None:
-            return BOT_DECLINE if "算帳" in text or "付錢" in text else bot_help(group)
-        reason = extract_reason(without or "", delta)
-        recorder_user_id = source.get("userId", "unknown")
-        result = add_point(client, group, recorder_user_id, delta, BOT_MEMBER_ID, "不揪鳥", reason)
-        return f"{result}\n{BOT_DECLINE}"
+        if delta is not None:
+            reason = extract_reason(without or "", delta)
+            recorder_user_id = source.get("userId", "unknown")
+            result = add_point(client, group, recorder_user_id, delta, BOT_MEMBER_ID, "不揪鳥", reason)
+            return f"{result}\n{BOT_DECLINE}"
+        if "算帳" in text or "付錢" in text:
+            return BOT_DECLINE
+        # @不揪鳥 講其他的話 → 交給 Gemini 純聊天（失敗/沒 key 就回說明）
+        said = (without or "").strip()
+        return gemini.chat(said) or bot_help(group)
 
     if delta is not None:
         mention = extract_mention(text, message)
