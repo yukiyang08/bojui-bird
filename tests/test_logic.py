@@ -6,6 +6,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import pytest
 
 from app.logic import (
+    BOT_MEMBER_ID,
     build_liff_payload,
     calc_settlement,
     clean_record_edit,
@@ -149,6 +150,24 @@ def test_build_liff_payload():
     assert all(m["pay"] is None for m in build_liff_payload(members, records)["ranking"])  # no target -> no estimate
 
 
+def test_bot_is_scored_but_never_pays():
+    members = [
+        {"line_user_id": "U_a", "display_name": "阿哲", "total_points": 3},
+        {"line_user_id": "U_b", "display_name": "小明", "total_points": -3},
+        {"line_user_id": BOT_MEMBER_ID, "display_name": "不揪鳥", "total_points": 5},
+    ]
+    payload = build_liff_payload(members, [], dinner_target=6000)
+    by_name = {m["display_name"]: m for m in payload["ranking"]}
+    assert by_name["不揪鳥"]["total_points"] == 5           # 上榜、有分數
+    assert by_name["不揪鳥"]["pay"] is None                  # 但不分攤
+    assert by_name["阿哲"]["pay"] + by_name["小明"]["pay"] == 6000  # 全額落在真人身上
+    assert "不揪鳥" not in [m["display_name"] for m in payload["members"]]  # 記一筆選單不列它
+
+    text = format_settlement_text("聚餐", members, 6000)
+    assert "不揪鳥" not in text
+    assert "共 2 人" in text
+
+
 def test_clean_record_edit():
     assert clean_record_edit(None, None) == {}
     assert clean_record_edit(-3, "  遲到  ") == {"delta": -3, "reason": "遲到"}
@@ -173,5 +192,6 @@ if __name__ == "__main__":
     test_calc_settlement_sinner_pays_more()
     test_leaderboard_data()
     test_build_liff_payload()
+    test_bot_is_scored_but_never_pays()
     test_clean_record_edit()
     print("all tests passed")

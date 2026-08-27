@@ -1,6 +1,7 @@
 import os
 
 from app.logic import (
+    BOT_MEMBER_ID,
     build_liff_payload,
     clean_record_edit,
     clean_target,
@@ -306,6 +307,8 @@ def handle_message(client, event: dict) -> str | None:
         return target(client, group, parse_target_command(text))
 
     if text.startswith("!算帳"):
+        if mention_targets_self(message):
+            return BOT_DECLINE
         title, amount = parse_settlement_command(text)
         return settlement(client, group, title, amount)
 
@@ -316,7 +319,13 @@ def handle_message(client, event: dict) -> str | None:
         delta = parse_point_delta(without)
 
     if mention_targets_self(message):
-        return BOT_DECLINE if delta is not None else bot_help(group)
+        # 不揪鳥可以被加減分（會上排行榜），但每次都提醒它不出錢
+        if delta is None:
+            return BOT_DECLINE if "算帳" in text or "付錢" in text else bot_help(group)
+        reason = extract_reason(without or "", delta)
+        recorder_user_id = source.get("userId", "unknown")
+        result = add_point(client, group, recorder_user_id, delta, BOT_MEMBER_ID, "不揪鳥", reason)
+        return f"{result}\n{BOT_DECLINE}"
 
     if delta is not None:
         mention = extract_mention(text, message)

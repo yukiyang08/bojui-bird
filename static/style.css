@@ -257,7 +257,14 @@ body.shake { animation: shk 0.45s; }
 }
 .step button:active { transform: scale(0.92); }
 .step button iconify-icon { font-size: 17px; }
-.step .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 48px; text-align: center; }
+.step .v {
+  width: 64px; flex: none; font: inherit; font-size: 20px; font-weight: 700;
+  font-variant-numeric: tabular-nums; text-align: center;
+  padding: 8px 4px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  -webkit-appearance: none; appearance: none;
+}
+.step .v:focus { outline: none; border-color: var(--accent); }
 .step .v.pos { color: var(--pos); }
 .step .v.neg { color: var(--neg); }
 

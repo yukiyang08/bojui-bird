@@ -2,6 +2,8 @@ import re
 
 POINT_RE = re.compile(r"^([+-]\d+)(?:\s+|$)")
 
+BOT_MEMBER_ID = "BOT"
+
 
 def extract_mention(text: str, message: dict) -> tuple[str, str, str] | None:
     """Pulls (user_id, display_name, text_with_mention_removed) from a LINE
@@ -116,18 +118,18 @@ def build_liff_payload(
     expected newest-first. Each log entry carries `id` so the page can edit,
     delete, or add alongside it."""
     ranked = sorted(members, key=lambda m: m["total_points"], reverse=True)
-    pays = (
-        calc_settlement([m["total_points"] for m in ranked], dinner_target)
-        if dinner_target and ranked
-        else None
-    )
+    payers = [m for m in ranked if m.get("line_user_id") != BOT_MEMBER_ID]
+    pay_by_id = {}
+    if dinner_target and payers:
+        amounts = calc_settlement([m["total_points"] for m in payers], dinner_target)
+        pay_by_id = {m["line_user_id"]: a for m, a in zip(payers, amounts)}
     ranking = [
         {
             "display_name": m["display_name"],
             "total_points": m["total_points"],
-            "pay": pays[i] if pays else None,
+            "pay": pay_by_id.get(m.get("line_user_id")),
         }
-        for i, m in enumerate(ranked)
+        for m in ranked
     ]
     names = {m["line_user_id"]: m["display_name"] for m in members}
     entry = lambda r: {
@@ -140,7 +142,11 @@ def build_liff_payload(
     merit_log = [entry(r) for r in records if r["delta"] > 0][:log_size]
     sin_log = [entry(r) for r in records if r["delta"] < 0][:log_size]
     member_list = sorted(
-        ({"line_user_id": m["line_user_id"], "display_name": m["display_name"]} for m in members),
+        (
+            {"line_user_id": m["line_user_id"], "display_name": m["display_name"]}
+            for m in members
+            if m["line_user_id"] != BOT_MEMBER_ID
+        ),
         key=lambda m: m["display_name"] or "",
     )
     return {
@@ -169,12 +175,11 @@ def clean_record_edit(delta, reason) -> dict:
 def format_leaderboard_text(members: list[dict]) -> str:
     if not members:
         return "還沒有任何記點紀錄"
-    data = leaderboard_data(members)
-    lines = ["功德榜（點數最高）"]
-    lines += [f"{i + 1}. {m['display_name']} {m['total_points']} 點" for i, m in enumerate(data["merit"])]
-    lines.append("")
-    lines.append("罪人榜（點數最低）")
-    lines += [f"{i + 1}. {m['display_name']} {m['total_points']} 點" for i, m in enumerate(data["sinner"])]
+    ranked = sorted(members, key=lambda m: m["total_points"], reverse=True)
+    lines = ["戰績排行"]
+    for i, m in enumerate(ranked):
+        p = m["total_points"]
+        lines.append(f"{i + 1}. {m['display_name']} {'+' if p > 0 else ''}{p}")
     return "\n".join(lines)
 
 
@@ -192,6 +197,7 @@ def format_history_text(display_name: str, records: list[dict]) -> str:
 def format_settlement_text(title: str, members: list[dict], amount: int | None) -> str:
     if amount is None:
         return "還沒設定大餐目標金額，用 `!目標 12000` 設定，或 `!算帳 12000` 直接給金額"
+    members = [m for m in members if m.get("line_user_id") != BOT_MEMBER_ID]
     if not members:
         return "還沒有人有記點紀錄，無法算帳"
     ranked = sorted(members, key=lambda m: m["total_points"], reverse=True)

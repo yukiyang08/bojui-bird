@@ -12,8 +12,16 @@ const ICON = {
 const TAGLINES = [
   "放鳥一時爽，排行榜火葬場",
   "不揪不揪不揪",
-  "今天，你行善了嗎？",
+  "今天，你揪了嗎？",
   "揪團的是英雄，放鳥的是鳥",
+  "揪不動的心，算得清的帳",
+  "做人可以鳥，但別鳥太兇",
+  "功德+1，業障-1，人生歸零",
+  "當鳥的自由，是要付錢的",
+  "揪團界的照妖鏡",
+  "鳥事做多了，是會上榜的",
+  "本鳥負責記帳，不負責原諒",
+  "揪一次，啾一次",
 ];
 
 /* 12 種情緒圖：static/images/emotions/<name>.png
@@ -22,8 +30,23 @@ const emoSrc = (name) => `images/emotions/${name}.png`;
 function emoImg(name, cls) {
   return `<img class="emo${cls ? " " + cls : ""}" src="${emoSrc(name)}" alt="" loading="lazy">`;
 }
-function moodFace(points) {
-  return points > 0 ? "laugh" : points < 0 ? "angry" : "happy";
+
+const EMO_MOOD = {
+  pos: ["happy", "laugh", "cheer", "love", "cool", "playful"],
+  neg: ["angry", "sad", "confused"],
+  zero: ["happy", "shy", "sleepy", "surprised", "confused"],
+};
+function hashNum(s) {
+  let h = 0;
+  for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h;
+}
+function pickEmo(list, seed) {
+  return list[hashNum(seed) % list.length];
+}
+function moodFace(points, seed = "") {
+  const bucket = points > 0 ? EMO_MOOD.pos : points < 0 ? EMO_MOOD.neg : EMO_MOOD.zero;
+  return pickEmo(bucket, seed + ":" + points);
 }
 
 /* ---------- helpers ---------- */
@@ -129,7 +152,7 @@ function render(data) {
   const mascot = document.querySelector(".mascot");
   if (mascot) {
     mascot.innerHTML = ranking.length
-      ? emoImg(moodFace(ranking[0].total_points))
+      ? emoImg(moodFace(ranking[0].total_points, ranking[0].display_name))
       : `<img src="images/logo.png" alt="不揪鳥" width="40" height="40">`;
   }
 
@@ -157,8 +180,6 @@ function section(label, icon, groupHtml) {
   return `<p class="label">${ic}${label}</p><div class="group">${groupHtml}</div>`;
 }
 
-const POD_FACE = ["cool", "happy", "love"];
-
 function podiumBlock(ranking) {
   if (!ranking.length) {
     return `<div class="podium empty">${emoImg("sleepy", "big")}<p>還沒有戰績<br>快去記第一筆</p></div>`;
@@ -171,7 +192,7 @@ function podiumBlock(ranking) {
       const m = top[idx];
       const p = m.total_points;
       const cls = p > 0 ? "pos" : p < 0 ? "neg" : "zero";
-      const face = idx === 0 && p <= 0 ? "confused" : POD_FACE[idx];
+      const face = moodFace(p, m.display_name);
       return (
         `<div class="pod pod${idx + 1}">` +
         `<div class="pod-bird">${emoImg(face)}<span class="medal">${medals[idx]}</span></div>` +
@@ -247,7 +268,7 @@ function logGroup(kind, entries, emptyText) {
       const sub = e.reason ? `<div class="sub">${escapeHtml(e.reason)}</div>` : "";
       return (
         `<button class="line log ${cls}" data-kind="${kind}" data-id="${escapeHtml(e.id)}">` +
-        `<span class="av">${emoImg(e.delta > 0 ? "happy" : "angry", "sm")}</span>` +
+        `<span class="av">${emoImg(pickEmo(e.delta > 0 ? EMO_MOOD.pos : EMO_MOOD.neg, e.display_name + e.id), "sm")}</span>` +
         `<span class="main"><div class="name">${escapeHtml(e.display_name)}</div>${sub}</span>` +
         `<span class="trail"><span class="pts ${cls}">${e.delta > 0 ? "+" : ""}${e.delta}</span>` +
         `<span class="meta">${fmtDate(e.created_at)}</span></span>` +
@@ -402,10 +423,11 @@ function mountSheet(html) {
 }
 
 function wireStep(el, initial) {
-  let v = initial;
+  const clamp = (n) => Math.max(-99, Math.min(99, n));
+  let v = clamp(initial) || 1;
   const vEl = el.querySelector(".v");
   const paint = () => {
-    vEl.textContent = (v > 0 ? "+" : "") + v;
+    vEl.value = (v > 0 ? "+" : "") + v;
     vEl.className = "v " + (v > 0 ? "pos" : "neg");
   };
   el.querySelectorAll("[data-step]").forEach((b) =>
@@ -413,11 +435,17 @@ function wireStep(el, initial) {
       const s = Number(b.dataset.step);
       v += s;
       if (v === 0) v += s;
-      v = Math.max(-99, Math.min(99, v));
+      v = clamp(v);
       buzz(6);
       paint();
     })
   );
+  // 直接用鍵盤打數字
+  vEl.addEventListener("input", () => {
+    const n = parseInt(vEl.value.replace(/[^\d-]/g, ""), 10);
+    if (!isNaN(n) && n !== 0) v = clamp(n);
+  });
+  vEl.addEventListener("blur", paint); // 收尾時補回 +/- 號、修掉 0 或空白
   paint();
   return () => v;
 }
@@ -425,7 +453,7 @@ function wireStep(el, initial) {
 const STEP_HTML =
   `<div class="step">` +
   `<button type="button" data-step="-1"><iconify-icon icon="lucide:minus"></iconify-icon></button>` +
-  `<span class="v"></span>` +
+  `<input class="v" type="text" inputmode="numeric" autocomplete="off" aria-label="點數">` +
   `<button type="button" data-step="1"><iconify-icon icon="lucide:plus"></iconify-icon></button>` +
   `</div>`;
 
@@ -532,7 +560,7 @@ function openTargetSheet() {
   const cur = state.data.dinner_target;
   const { el, close } = mountSheet(
     `<h3><iconify-icon icon="${ICON.target}"></iconify-icon>大餐目標金額</h3>
-     <div class="fld"><span>!算帳 不帶數字時就用這個金額</span>
+     <div class="fld">
        <input type="number" inputmode="numeric" class="amt" min="1" placeholder="例如 12000"></div>
      <div class="acts"><button class="btn primary" type="button" data-save>儲存</button></div>
      <p class="err"></p>`
