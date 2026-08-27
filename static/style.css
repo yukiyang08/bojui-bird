@@ -48,10 +48,11 @@ h1, .label, .pts.big, .pod-pts, .rank, .pod-rank, .chip, .v, .head-add {
 /* ---- header ---- */
 header { display: flex; align-items: center; gap: 10px; padding: 2px 2px 4px; margin-bottom: 12px; }
 .mascot { flex: none; width: 40px; height: 40px; }
-.mascot svg {
+.mascot svg, .mascot img {
   width: 40px; height: 40px; transform-origin: 50% 82%;
   animation: bob 2.6s ease-in-out infinite;
 }
+.mascot img { object-fit: contain; border-radius: 8px; }
 @keyframes bob {
   0%, 100% { transform: translateY(0) rotate(-4deg); }
   50% { transform: translateY(-3px) rotate(4deg); }

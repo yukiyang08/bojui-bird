@@ -15,6 +15,7 @@ from app.logic import (
     format_settlement_text,
     format_target_text,
     leaderboard_data,
+    mention_targets_self,
     parse_point_delta,
     parse_settlement_command,
     parse_target_command,
@@ -29,6 +30,12 @@ def test_extract_mention():
     assert display_name == "@小明"
     assert remaining == "+1  遲到"
     assert extract_mention("!排行榜", {}) is None
+
+
+def test_mention_targets_self():
+    assert mention_targets_self({"mention": {"mentionees": [{"index": 3, "length": 4, "isSelf": True}]}})
+    assert not mention_targets_self({"mention": {"mentionees": [{"index": 3, "length": 3, "userId": "U1"}]}})
+    assert not mention_targets_self({})
 
 
 def test_parse_point_delta():
@@ -141,6 +148,7 @@ def test_clean_record_edit():
 
 if __name__ == "__main__":
     test_extract_mention()
+    test_mention_targets_self()
     test_parse_point_delta()
     test_extract_reason()
     test_parse_settlement_command()

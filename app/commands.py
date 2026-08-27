@@ -8,10 +8,13 @@ from app.logic import (
     format_leaderboard_text,
     format_settlement_text,
     format_target_text,
+    mention_targets_self,
     parse_point_delta,
     parse_settlement_command,
     parse_target_command,
 )
+
+BOT_DECLINE = "我只負責記帳 不負責付錢喔 不揪不揪"
 
 
 def get_or_create_group(client, line_group_id: str) -> dict:
@@ -210,13 +213,17 @@ def target(client, group: dict, amount: int | None) -> str:
     return format_target_text(value)
 
 
+# 中文輸入法常打出全形標點／數字，統一成半形（一對一對應，不影響 mention 的 index）
+_FULLWIDTH = str.maketrans("！＋－−０１２３４５６７８９＠", "!+--0123456789@")
+
+
 def handle_message(client, event: dict) -> str | None:
     source = event["source"]
     if source.get("type") != "group":
         return None  # ponytail: PRD scope is group chats only
 
     message = event["message"]
-    text = message["text"].strip()
+    text = message["text"].translate(_FULLWIDTH).strip()
     group = get_or_create_group(client, source["groupId"])
 
     if text.startswith("!排行榜"):
@@ -238,6 +245,8 @@ def handle_message(client, event: dict) -> str | None:
 
     delta = parse_point_delta(text)
     if delta is not None:
+        if mention_targets_self(message):
+            return BOT_DECLINE
         mention = extract_mention(text, message)
         if not mention:
             return "請 @ 對象，例如：-1 @小明 遲到 或 +1 @老王 買手搖"

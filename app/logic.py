@@ -19,6 +19,13 @@ def extract_mention(text: str, message: dict) -> tuple[str, str, str] | None:
     return user_id, display_name, remaining
 
 
+def mention_targets_self(message: dict) -> bool:
+    """True when the first mention points at the bot itself — LINE flags that
+    mentionee with `isSelf` (and often omits its userId)."""
+    mentionees = (message.get("mention") or {}).get("mentionees", [])
+    return bool(mentionees) and bool(mentionees[0].get("isSelf"))
+
+
 def parse_point_delta(text: str) -> int | None:
     m = POINT_RE.match(text)
     return int(m.group(1)) if m else None

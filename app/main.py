@@ -1,10 +1,14 @@
+import logging
 import os
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
+log = logging.getLogger("uvicorn.error")
+
 from fastapi import Body, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.commands import (
@@ -19,6 +23,18 @@ from app.db import get_client
 from app.line_client import reply_message, verify_signature
 
 app = FastAPI()
+
+# 前後端分開部署時（例如前端放 Vercel），把前端網址填進 ALLOWED_ORIGINS
+# （逗號分隔）。同源部署可留空。
+_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 app.mount("/liff", StaticFiles(directory="static", html=True), name="liff")
 
 
@@ -93,7 +109,11 @@ async def callback(request: Request, x_line_signature: str = Header(alias="X-Lin
     for event in payload.get("events", []):
         if event.get("type") != "message" or event["message"].get("type") != "text":
             continue
+        log.info(
+            "event: source=%s text=%r", event.get("source", {}).get("type"), event["message"].get("text")
+        )
         reply_text = handle_message(client, event)
+        log.info("reply: %r", reply_text)
         if reply_text:
             await reply_message(event["replyToken"], reply_text)
     return {"status": "ok"}

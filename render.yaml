@@ -19,3 +19,6 @@ services:
         sync: false
       - key: LIFF_ID
         sync: false
+      # 前後端同一個服務不用填；之後若把前端搬去別的網域再設
+      - key: ALLOWED_ORIGINS
+        value: ""

@@ -4,459 +4,53 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>不揪鳥排行榜</title>
+<link rel="icon" href="images/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
-<style>
-  :root {
-    --bg: #f6f6f3;
-    --surface: #ffffff;
-    --line: #e7e7e2;
-    --ink: #1b1b19;
-    --ink-2: #78776f;
-    --accent: #4f46e5;
-    --pos: #15803d;
-    --neg: #b4231d;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #111112;
-      --surface: #1a1a1b;
-      --line: #2c2c2e;
-      --ink: #ececea;
-      --ink-2: #8d8d85;
-      --accent: #8b85f0;
-      --pos: #46c37b;
-      --neg: #ef6b63;
-    }
-  }
-
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body {
-    margin: 0;
-    padding: 22px 14px calc(40px + env(safe-area-inset-bottom));
-    background: var(--bg);
-    color: var(--ink);
-    font-family: "PingFang TC", "Noto Sans TC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 15px;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-  }
-  .wrap { max-width: 440px; margin: 0 auto; }
-
-  header { display: flex; align-items: center; gap: 8px; padding: 0 2px 4px; margin-bottom: 14px; }
-  header > iconify-icon { font-size: 22px; color: var(--ink); }
-  header h1 { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: 0.01em; }
-  .head-add {
-    margin-left: auto;
-    display: flex; align-items: center; gap: 5px;
-    padding: 7px 12px 7px 10px; border-radius: 999px;
-    border: none; background: var(--accent); color: #fff;
-    font: inherit; font-size: 13px; font-weight: 650; cursor: pointer;
-  }
-  .head-add:active { filter: brightness(0.94); }
-  .head-add iconify-icon { font-size: 15px; }
-
-  .label {
-    font-size: 12px; font-weight: 600; color: var(--ink-2);
-    letter-spacing: 0.03em;
-    margin: 22px 6px 7px;
-  }
-  .label:first-of-type { margin-top: 4px; }
-
-  .group {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    overflow: hidden;
-  }
-
-  .line {
-    display: flex; align-items: center; gap: 11px;
-    width: 100%;
-    padding: 12px 14px;
-    background: none; border: none;
-    font: inherit; color: inherit; text-align: left;
-  }
-  .line + .line { border-top: 1px solid var(--line); }
-  button.line { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  button.line:active { background: color-mix(in srgb, var(--ink) 5%, transparent); }
-
-  .line .ico { font-size: 18px; color: var(--ink-2); flex: none; }
-  .line .chev { font-size: 18px; color: var(--ink-2); opacity: 0.55; flex: none; margin: 0 -2px 0 -4px; }
-
-  .main { flex: 1; min-width: 0; }
-  .main .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .main .sub { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-  .rank {
-    flex: none; width: 20px; text-align: center;
-    font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 600;
-    color: var(--ink-2);
-  }
-  .line.first .rank { color: var(--accent); }
-  .line.first .name { font-weight: 650; }
-
-  .trail { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-  .pts { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .pts.big { font-size: 17px; font-weight: 750; letter-spacing: -0.01em; }
-  .money { font-size: 12px; font-weight: 500; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-  .money.back { color: var(--pos); }
-  .pts.pos { color: var(--pos); }
-  .pts.neg { color: var(--neg); }
-  .pts.zero { color: var(--ink-2); }
-  .meta { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-  .val { color: var(--ink-2); font-variant-numeric: tabular-nums; }
-  .val.strong { color: var(--ink); font-weight: 650; font-size: 15px; }
-
-  .row-empty { padding: 15px 14px; color: var(--ink-2); font-size: 13px; }
-
-  .foot { text-align: center; color: var(--ink-2); font-size: 12px; margin-top: 18px; }
-  .state { text-align: center; color: var(--ink-2); font-size: 14px; margin-top: 72px; }
-  .state iconify-icon { font-size: 30px; display: block; margin: 0 auto 10px; }
-
-  /* sheet */
-  .backdrop {
-    position: fixed; inset: 0; z-index: 20;
-    background: rgba(0, 0, 0, 0.38);
-    display: flex; align-items: flex-end; justify-content: center;
-    opacity: 0; transition: opacity 0.18s ease;
-  }
-  .backdrop.show { opacity: 1; }
-  .sheet {
-    width: 100%; max-width: 440px;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 16px 16px 0 0;
-    padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
-    transform: translateY(101%);
-    transition: transform 0.24s cubic-bezier(0.2, 0.7, 0.3, 1);
-  }
-  .backdrop.show .sheet { transform: none; }
-  @media (prefers-reduced-motion: reduce) { .backdrop, .sheet { transition: none; } }
-  .sheet h3 { margin: 0 0 16px; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
-  .sheet h3 iconify-icon { font-size: 17px; color: var(--ink-2); }
-  .fld { margin-bottom: 13px; }
-  .fld > span { display: block; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
-  .fld input, .fld select {
-    width: 100%; font: inherit; color: var(--ink);
-    padding: 10px 11px; border-radius: 9px;
-    border: 1px solid var(--line); background: var(--bg);
-    -webkit-appearance: none; appearance: none;
-  }
-  .fld input:focus, .fld select:focus { outline: none; border-color: var(--accent); }
-
-  .step { display: flex; align-items: center; gap: 12px; }
-  .step button {
-    width: 40px; height: 40px; flex: none;
-    display: grid; place-items: center;
-    border-radius: 9px; border: 1px solid var(--line);
-    background: var(--bg); color: var(--ink); cursor: pointer;
-  }
-  .step button iconify-icon { font-size: 17px; }
-  .step .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 48px; text-align: center; }
-  .step .v.pos { color: var(--pos); }
-  .step .v.neg { color: var(--neg); }
-
-  .acts { display: flex; gap: 9px; margin-top: 6px; }
-  .btn {
-    padding: 11px 14px; border-radius: 10px; border: 1px solid transparent;
-    font: inherit; font-weight: 650; cursor: pointer;
-  }
-  .btn.primary { flex: 1; background: var(--accent); color: #fff; }
-  .btn.ghost {
-    flex: none; background: none; border-color: var(--line); color: var(--neg);
-    display: flex; align-items: center; gap: 5px;
-  }
-  .btn.ghost iconify-icon { font-size: 16px; }
-  .btn:disabled { opacity: 0.5; }
-  .err { color: var(--neg); font-size: 13px; margin: 10px 0 0; min-height: 1em; text-align: center; }
-</style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <iconify-icon icon="lucide:bird"></iconify-icon>
-    <h1>不揪鳥</h1>
-    <button class="head-add" data-act="add"><iconify-icon icon="lucide:plus"></iconify-icon>新增功績</button>
+    <div class="mascot"></div>
+    <div class="hd-text">
+      <h1>不揪鳥</h1>
+      <p class="say" id="say"></p>
+    </div>
+    <button class="head-add" data-act="add"><iconify-icon icon="lucide:feather"></iconify-icon>記一筆</button>
   </header>
   <div id="app"><p class="state"><iconify-icon icon="lucide:loader"></iconify-icon>載入中</p></div>
 </div>
 
+<script src="ui.js"></script>
 <script>
+// 若前端與後端分開部署（例如前端放 Vercel、後端放 Render），
+// 把這裡改成後端網址，例如 "https://bojui-bird.onrender.com"；同源部署留空字串即可。
+const API_BASE = "";
+
 const state = { groupId: null, data: null };
 const app = document.getElementById("app");
 
-const ICON = {
-  target: "lucide:target",
-  trophy: "lucide:trophy",
-  merit: "lucide:heart-handshake",
-  sin: "lucide:gavel",
-  chev: "lucide:chevron-right",
-};
-
-async function main() {
-  const cfg = await fetch("/api/config").then((r) => r.json());
-  if (!cfg.liffId) return showState("lucide:settings", "尚未設定 LIFF_ID");
-
-  await liff.init({ liffId: cfg.liffId });
-  const ctx = liff.getContext();
-  if (!ctx || ctx.type !== "group") return showState("lucide:users", "請從群組聊天室開啟這個頁面");
-
-  state.groupId = ctx.groupId;
-  document.addEventListener("click", (ev) => {
-    const row = ev.target.closest("[data-kind]");
-    if (row) return openEditSheet(row.dataset.kind, row.dataset.id);
-    const act = ev.target.closest("[data-act]");
-    if (act && act.dataset.act === "target") return openTargetSheet();
-    if (act && act.dataset.act === "add") return openAddSheet();
+// ngrok 免費網域會對瀏覽器請求插入警告頁，這個 header 可略過它
+function apiFetch(url, opts = {}) {
+  return fetch(API_BASE + url, {
+    ...opts,
+    headers: { "ngrok-skip-browser-warning": "true", ...(opts.headers || {}) },
   });
-  await reload();
 }
 
-async function reload() {
-  const data = await fetch(`/api/leaderboard/${state.groupId}`).then((r) => r.json());
+initChrome();
+
+async function reloadData() {
+  const data = await apiFetch(`/api/leaderboard/${state.groupId}`).then((r) => r.json());
   render(data);
 }
 
-function showState(icon, text) {
-  app.innerHTML = `<p class="state"><iconify-icon icon="${icon}"></iconify-icon>${escapeHtml(text)}</p>`;
-}
-
-function render(data) {
-  state.data = data;
-  app.innerHTML =
-    section("大餐目標", targetGroup(data.dinner_target)) +
-    section(
-      data.dinner_target ? "總排名 · 目前餐費試算" : "總排名",
-      rankingGroup(data.ranking || [])
-    ) +
-    section("功德紀錄", logGroup("merit", data.merit_log || [], "還沒有人做好事")) +
-    section("犯罪紀錄", logGroup("sin", data.sin_log || [], "目前無人犯案")) +
-    `<p class="foot">右上角「記一筆」手動加紀錄 · 點任一筆紀錄可修改或刪除</p>`;
-}
-
-function section(label, groupHtml) {
-  return `<p class="label">${label}</p><div class="group">${groupHtml}</div>`;
-}
-
-function targetGroup(amount) {
-  const val = amount
-    ? `<span class="val strong">$${Number(amount).toLocaleString()}</span>`
-    : `<span class="val">未設定</span>`;
-  return (
-    `<button class="line" data-act="target">` +
-    `<iconify-icon class="ico" icon="${ICON.target}"></iconify-icon>` +
-    `<span class="main"><div class="name">大餐目標金額</div></span>` +
-    val +
-    `<iconify-icon class="chev" icon="${ICON.chev}"></iconify-icon>` +
-    `</button>`
-  );
-}
-
-function rankingGroup(members) {
-  if (!members.length) return `<p class="row-empty">還沒有人被記點</p>`;
-  return members
-    .map((m, i) => {
-      const p = m.total_points;
-      const cls = p > 0 ? "pos" : p < 0 ? "neg" : "zero";
-      const money = m.pay == null ? "" : `<span class="money${m.pay < 0 ? " back" : ""}"> ${fmtMoney(m.pay)}</span>`;
-      return (
-        `<div class="line${i === 0 ? " first" : ""}">` +
-        `<span class="rank">${i + 1}</span>` +
-        `<span class="main"><div class="name">${escapeHtml(m.display_name)}</div></span>` +
-        `<span class="trail"><span class="pts big ${cls}">${p > 0 ? "+" : ""}${p}</span>${money}</span>` +
-        `</div>`
-      );
-    })
-    .join("");
-}
-
-function logGroup(kind, entries, emptyText) {
-  if (!entries.length) return `<p class="row-empty">${escapeHtml(emptyText)}</p>`;
-  return entries
-    .map((e) => {
-      const cls = e.delta > 0 ? "pos" : "neg";
-      const sub = e.reason ? `<div class="sub">${escapeHtml(e.reason)}</div>` : "";
-      return (
-        `<button class="line" data-kind="${kind}" data-id="${escapeHtml(e.id)}">` +
-        `<span class="main"><div class="name">${escapeHtml(e.display_name)}</div>${sub}</span>` +
-        `<span class="trail"><span class="pts ${cls}">${e.delta > 0 ? "+" : ""}${e.delta}</span>` +
-        `<span class="meta">${fmtDate(e.created_at)}</span></span>` +
-        `<iconify-icon class="chev" icon="${ICON.chev}"></iconify-icon>` +
-        `</button>`
-      );
-    })
-    .join("");
-}
-
-/* ---- sheets ---- */
-
-function mountSheet(html) {
-  const el = document.createElement("div");
-  el.className = "backdrop";
-  el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
-  document.body.appendChild(el);
-  requestAnimationFrame(() => el.classList.add("show"));
-  const close = () => {
-    el.classList.remove("show");
-    setTimeout(() => el.remove(), 240);
-  };
-  el.addEventListener("click", (ev) => {
-    if (ev.target === el) close();
-  });
-  return { el, close };
-}
-
-function wireStep(el, initial) {
-  let v = initial;
-  const vEl = el.querySelector(".v");
-  const paint = () => {
-    vEl.textContent = (v > 0 ? "+" : "") + v;
-    vEl.className = "v " + (v > 0 ? "pos" : "neg");
-  };
-  el.querySelectorAll("[data-step]").forEach((b) =>
-    b.addEventListener("click", () => {
-      const s = Number(b.dataset.step);
-      v += s;
-      if (v === 0) v += s;
-      v = Math.max(-99, Math.min(99, v));
-      paint();
-    })
-  );
-  paint();
-  return () => v;
-}
-
-const STEP_HTML =
-  `<div class="step">` +
-  `<button type="button" data-step="-1"><iconify-icon icon="lucide:minus"></iconify-icon></button>` +
-  `<span class="v"></span>` +
-  `<button type="button" data-step="1"><iconify-icon icon="lucide:plus"></iconify-icon></button>` +
-  `</div>`;
-
-const setBusy = (el, on) => el.querySelectorAll("button").forEach((b) => (b.disabled = on));
-
-function openEditSheet(kind, id) {
-  const list = kind === "merit" ? state.data.merit_log : state.data.sin_log;
-  const rec = (list || []).find((e) => String(e.id) === id);
-  if (!rec) return;
-
-  const { el, close } = mountSheet(
-    `<h3><iconify-icon icon="lucide:pencil"></iconify-icon>編輯紀錄 · ${escapeHtml(rec.display_name)}</h3>
-     <div class="fld"><span>點數</span>${STEP_HTML}</div>
-     <div class="fld"><span>事蹟</span><input type="text" class="reason" maxlength="60" placeholder="原因"></div>
-     <div class="acts">
-       <button class="btn ghost" type="button" data-del><iconify-icon icon="lucide:trash-2"></iconify-icon>刪除</button>
-       <button class="btn primary" type="button" data-save>儲存</button>
-     </div>
-     <p class="err"></p>`
-  );
-  const getDelta = wireStep(el, rec.delta);
-  const reason = el.querySelector(".reason");
-  const err = el.querySelector(".err");
-  reason.value = rec.reason || "";
-
-  el.querySelector("[data-save]").addEventListener("click", async () => {
-    setBusy(el, true);
-    err.textContent = "";
-    try {
-      await api("PATCH", `/api/records/${rec.id}`, { delta: getDelta(), reason: reason.value });
-      close();
-      await reload();
-    } catch (e) {
-      err.textContent = e.message;
-      setBusy(el, false);
-    }
-  });
-  el.querySelector("[data-del]").addEventListener("click", async () => {
-    if (!confirm("刪除這筆紀錄？")) return;
-    setBusy(el, true);
-    err.textContent = "";
-    try {
-      await api("DELETE", `/api/records/${rec.id}`);
-      close();
-      await reload();
-    } catch (e) {
-      err.textContent = e.message;
-      setBusy(el, false);
-    }
-  });
-}
-
-function openAddSheet() {
-  const members = state.data.members || [];
-  if (!members.length) return alert("還沒有任何成員可以記點");
-  const opts = members
-    .map((m) => `<option value="${escapeHtml(m.line_user_id)}">${escapeHtml(m.display_name)}</option>`)
-    .join("");
-
-  const { el, close } = mountSheet(
-    `<h3><iconify-icon icon="lucide:plus"></iconify-icon>手動記一筆</h3>
-     <div class="fld"><span>對象（限名單上的人）</span><select class="member">${opts}</select></div>
-     <div class="fld"><span>點數</span>${STEP_HTML}</div>
-     <div class="fld"><span>事蹟</span><input type="text" class="reason" maxlength="60" placeholder="原因"></div>
-     <div class="acts"><button class="btn primary" type="button" data-save>新增</button></div>
-     <p class="err"></p>`
-  );
-  const getDelta = wireStep(el, 1);
-  const member = el.querySelector(".member");
-  const reason = el.querySelector(".reason");
-  const err = el.querySelector(".err");
-
-  el.querySelector("[data-save]").addEventListener("click", async () => {
-    setBusy(el, true);
-    err.textContent = "";
-    try {
-      await api("POST", "/api/records", {
-        line_group_id: state.groupId,
-        target_user_id: member.value,
-        delta: getDelta(),
-        reason: reason.value,
-      });
-      close();
-      await reload();
-    } catch (e) {
-      err.textContent = e.message;
-      setBusy(el, false);
-    }
-  });
-}
-
-function openTargetSheet() {
-  const cur = state.data.dinner_target;
-  const { el, close } = mountSheet(
-    `<h3><iconify-icon icon="${ICON.target}"></iconify-icon>大餐目標金額</h3>
-     <div class="fld"><span>!算帳 不帶數字時就用這個金額</span>
-       <input type="number" inputmode="numeric" class="amt" min="1" placeholder="例如 12000"></div>
-     <div class="acts"><button class="btn primary" type="button" data-save>儲存</button></div>
-     <p class="err"></p>`
-  );
-  const amt = el.querySelector(".amt");
-  const err = el.querySelector(".err");
-  if (cur) amt.value = cur;
-
-  el.querySelector("[data-save]").addEventListener("click", async () => {
-    const amount = parseInt(amt.value, 10);
-    if (!amount || amount <= 0) {
-      err.textContent = "請輸入大於 0 的金額";
-      return;
-    }
-    setBusy(el, true);
-    err.textContent = "";
-    try {
-      await api("PUT", "/api/target", { line_group_id: state.groupId, amount });
-      close();
-      await reload();
-    } catch (e) {
-      err.textContent = e.message;
-      setBusy(el, false);
-    }
-  });
-}
-
-async function api(method, url, body) {
-  const res = await fetch(url, {
+async function apiCall(method, url, body) {
+  const res = await apiFetch(url, {
     method,
     headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
@@ -466,22 +60,28 @@ async function api(method, url, body) {
   return j;
 }
 
-function fmtMoney(n) {
-  const s = "$" + Math.abs(n).toLocaleString();
-  return n < 0 ? "退 " + s : s;
+let step = "start";
+async function main() {
+  step = "fetch /api/config";
+  const cfg = await apiFetch(`/api/config`).then((r) => r.json());
+  if (!cfg.liffId) return showState("lucide:settings", "尚未設定 LIFF_ID");
+
+  step = "liff.init (id=" + cfg.liffId + ")";
+  await liff.init({ liffId: cfg.liffId });
+
+  step = "liff.getContext";
+  const ctx = liff.getContext();
+  if (!ctx || ctx.type !== "group") {
+    return showState("lucide:users", "請從群組聊天室開啟這個頁面（context=" + JSON.stringify(ctx) + "）");
+  }
+
+  step = "reloadData";
+  state.groupId = ctx.groupId;
+  wireClicks();
+  await reloadData();
 }
 
-function fmtDate(s) {
-  if (!s) return "";
-  const d = new Date(s);
-  return isNaN(d) ? "" : `${d.getMonth() + 1}/${d.getDate()}`;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
-main().catch((err) => showState("lucide:frown", "載入失敗：" + err.message));
+main().catch((err) => showState("lucide:frown", "載入失敗 @ " + step + "：" + (err && err.message || err)));
 </script>
 </body>
 </html>
