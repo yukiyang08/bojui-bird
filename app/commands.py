@@ -4,6 +4,7 @@ from app import gemini
 from app.logic import (
     BOT_MEMBER_ID,
     build_liff_payload,
+    chat_history_turns,
     clean_record_edit,
     clean_target,
     extract_mention,
@@ -18,6 +19,8 @@ from app.logic import (
     parse_target_command,
     without_first_mention,
 )
+
+CHAT_HISTORY_TURNS = 10  # 每人每群組留最近幾輪（user+model 算一輪）當 Gemini 的對話上下文
 
 BOT_DECLINE = "我只負責記帳 不負責付錢喔 不揪不揪"
 
@@ -73,6 +76,26 @@ def _write_dinner_target(client, group_id: str, amount: int) -> None:
         client.table("dinner_events").insert(
             {"group_id": group_id, "title": _TARGET_TITLE, "total_amount": amount}
         ).execute()
+
+
+def _read_chat_history(client, group_id: str, user_id: str) -> list[tuple[str, str]]:
+    rows = (
+        client.table("chat_history")
+        .select("role,text")
+        .eq("group_id", group_id)
+        .eq("line_user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(CHAT_HISTORY_TURNS * 2)
+        .execute()
+        .data
+    )
+    return chat_history_turns(rows)
+
+
+def _write_chat_turns(client, group_id: str, user_id: str, turns: list[tuple[str, str]]) -> None:
+    client.table("chat_history").insert(
+        [{"group_id": group_id, "line_user_id": user_id, "role": role, "text": text} for role, text in turns]
+    ).execute()
 
 
 def get_or_create_group(client, line_group_id: str) -> dict:
@@ -328,9 +351,15 @@ def handle_message(client, event: dict) -> str | None:
             return f"{result}\n{BOT_DECLINE}"
         if "算帳" in text or "付錢" in text:
             return BOT_DECLINE
-        # @不揪鳥 講其他的話 → 交給 Gemini 純聊天（失敗/沒 key 就回說明）
+        # @不揪鳥 講其他的話 → 交給 Gemini 純聊天，帶最近幾輪對話當上下文（失敗/沒 key 就回說明）
         said = (without or "").strip()
-        return gemini.chat(said) or bot_help(group)
+        recorder_user_id = source.get("userId", "unknown")
+        history = _read_chat_history(client, group["id"], recorder_user_id)
+        reply = gemini.chat(said, history)
+        if not reply:
+            return bot_help(group)
+        _write_chat_turns(client, group["id"], recorder_user_id, [("user", said), ("model", reply)])
+        return reply
 
     if delta is not None:
         mention = extract_mention(text, message)

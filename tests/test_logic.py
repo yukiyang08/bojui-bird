@@ -9,6 +9,7 @@ from app.logic import (
     BOT_MEMBER_ID,
     build_liff_payload,
     calc_settlement,
+    chat_history_turns,
     clean_record_edit,
     clean_target,
     extract_mention,
@@ -177,6 +178,15 @@ def test_clean_record_edit():
         clean_record_edit(0, None)
 
 
+def test_chat_history_turns():
+    rows = [  # newest-first, like the DB query returns
+        {"role": "model", "text": "不揪不揪"},
+        {"role": "user", "text": "你在幹嘛"},
+    ]
+    assert chat_history_turns(rows) == [("user", "你在幹嘛"), ("model", "不揪不揪")]
+    assert chat_history_turns([]) == []
+
+
 if __name__ == "__main__":
     test_extract_mention()
     test_mention_targets_self()
@@ -194,4 +204,5 @@ if __name__ == "__main__":
     test_build_liff_payload()
     test_bot_is_scored_but_never_pays()
     test_clean_record_edit()
+    test_chat_history_turns()
     print("all tests passed")

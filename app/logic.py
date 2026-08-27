@@ -212,3 +212,9 @@ def format_target_text(amount: int | None) -> str:
     if amount is None:
         return "目前沒有設定大餐目標金額，用 `!目標 12000` 設定"
     return f"大餐目標金額：{amount} 元（`!算帳` 不帶數字就用這個金額）"
+
+
+def chat_history_turns(rows: list[dict]) -> list[tuple[str, str]]:
+    """DB rows (newest-first, each a {"role", "text"} dict) -> oldest-first
+    (role, text) tuples in the shape the Gemini SDK wants for `contents`."""
+    return [(r["role"], r["text"]) for r in reversed(rows)]

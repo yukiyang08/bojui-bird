@@ -38,3 +38,16 @@ create table dinner_events (
     total_amount integer not null,
     created_at timestamptz not null default now()
 );
+
+-- @不揪鳥 閒聊的對話紀錄，每人每群組一條線，讀最近幾筆餵給 Gemini 當上下文
+create table chat_history (
+    id uuid primary key default gen_random_uuid(),
+    group_id uuid not null references groups(id),
+    line_user_id text not null,
+    role text not null check (role in ('user', 'model')),
+    text text not null,
+    created_at timestamptz not null default now()
+);
+
+create index chat_history_group_user_idx
+    on chat_history (group_id, line_user_id, created_at desc);

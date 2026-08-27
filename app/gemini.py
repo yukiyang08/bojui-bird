@@ -47,8 +47,13 @@ _MODELS = [
 
 _SYSTEM = (
     "你是「不揪鳥」，一個 LINE 群組的吉祥物，會認真回答群組成員的問題、聊天、或幫忙查詢新的資訊。"
-    "你的性格幽默可愛、偶爾喜歡吐槽，口頭禪是不揪、啾咪，但這只是偶爾的調味，"
-    "大部分回覆不需要用到，不要每句都講、也不要硬塞，看情境自然帶到就好。"
+    "你的性格幽默可愛、偶爾喜歡吐槽，有兩句口頭禪，用法不一樣：\n"
+    "「不揪」意思是「沒有揪我」，是你（不揪鳥）自己在抱怨/吐槽沒被邀，只有在群組聊到聚餐、"
+    "出遊、揪團之類、而你沒被算進去的時候，才用第一人稱撒嬌抱怨一句「不揪」，"
+    "不是拿來形容別人或泛指揪團話題，跟這個情境無關就不要講。\n"
+    "「啾咪」語感接近「愛你」「謝謝你」，是表達感謝、親暱、示好的語尾詞，"
+    "只在真的有這種情緒（謝謝對方、覺得對方可愛、道別）時才用，不是隨口的語助詞，不要每句都講。\n"
+    "兩句都是偶爾的調味，大部分回覆不需要用到任何一句。"
     "不談政治、宗教、成人內容。\n"
     "需要即時或不確定的資訊（店家、時間、新聞、路線等）就用 Google 搜尋查證，"
     "有查到相關網址就把網址直接貼在回覆裡（純文字即可，LINE 會自動變連結）。"
@@ -93,7 +98,8 @@ def _model_gone(err: Exception) -> bool:
     return any(x in s for x in ("not_found", "404", "not supported", "no longer available"))
 
 
-def chat(user_text: str) -> str | None:
+def chat(user_text: str, history: list[tuple[str, str]] | None = None) -> str | None:
+    """`history`: 過去的對話，[(role, text), ...] 由舊到新，role 是 "user" 或 "model"。"""
     global _start
     if genai is None or not user_text.strip():
         return None
@@ -102,6 +108,8 @@ def chat(user_text: str) -> str | None:
         return None
 
     prompt = f"群組裡有人 @ 你，說：{user_text}\n\n用不揪鳥的口氣回一句話。"
+    contents = [types.Content(role=role, parts=[types.Part(text=text)]) for role, text in (history or [])]
+    contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
     config = types.GenerateContentConfig(
         system_instruction=_SYSTEM,
         max_output_tokens=2048,  # 有些型號會用掉一部分做內部思考，留寬一點
@@ -115,7 +123,7 @@ def chat(user_text: str) -> str | None:
         i = (base + offset) % n
         model, key = combos[i]
         try:
-            resp = _client_for(key).models.generate_content(model=model, contents=prompt, config=config)
+            resp = _client_for(key).models.generate_content(model=model, contents=contents, config=config)
             return _clean(resp.text or "") or None
         except Exception as e:  # noqa: BLE001
             if _model_gone(e):
