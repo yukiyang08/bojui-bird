@@ -46,10 +46,10 @@ LIFF 排行榜頁（`/liff/liff.html`）顯示總排名（分數高到低）＋ 
 
 三張表就夠：
 
-- **groups**：存每個群組的設定，大餐目標金額（dinner_target_twd）
+- **groups**：存每個群組的設定
 - **group_members**：存每個人目前的總點數
 - **point_records**：存每一筆記點的歷史，誰記的、記誰的、原因是什麼
-- **dinner_events**：存每次算帳的名稱與總金額
+- **dinner_events**：存每次算帳的名稱與總金額；另外 title = `大餐目標` 的那一列存該群組目前的大餐目標金額
 
 ## 技術架構
 

@@ -2,12 +2,10 @@ create table groups (
     id uuid primary key default gen_random_uuid(),
     line_group_id text not null unique,
     point_value_twd integer not null default 100,
-    dinner_target_twd integer,               -- 大餐目標金額，!算帳 沒帶數字時的預設
     created_at timestamptz not null default now()
 );
-
--- 既有資料庫補這欄：
--- alter table groups add column dinner_target_twd integer;
+-- 大餐目標金額不放這裡，存在 dinner_events 中 title = '大餐目標' 的那一列
+-- （每組一列、會被覆蓋）。!算帳 沒帶數字時讀它。
 
 create table group_members (
     id uuid primary key default gen_random_uuid(),
@@ -31,6 +29,8 @@ create table point_records (
 create index point_records_group_target_idx
     on point_records (group_id, target_user_id, created_at desc);
 
+-- 每次 !算帳 記一列（title = 聚餐名稱）；另外 title = '大餐目標' 的那一列
+-- 存的是該群組目前設定的大餐目標金額（!目標 / LIFF 設定會覆蓋它）
 create table dinner_events (
     id uuid primary key default gen_random_uuid(),
     group_id uuid not null references groups(id),

@@ -44,6 +44,39 @@ BOT_HELP = "\n".join(
 
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
+# 群組的「大餐目標金額」存在 dinner_events 裡、用這個 title 標記的那一列（每組一列，
+# 會被覆蓋更新）。實際的 !算帳 紀錄用聚餐名稱當 title，不會互相影響。
+_TARGET_TITLE = "大餐目標"
+
+
+def _read_dinner_target(client, group_id: str) -> int | None:
+    res = (
+        client.table("dinner_events")
+        .select("total_amount")
+        .eq("group_id", group_id)
+        .eq("title", _TARGET_TITLE)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0]["total_amount"] if res.data else None
+
+
+def _write_dinner_target(client, group_id: str, amount: int) -> None:
+    res = (
+        client.table("dinner_events")
+        .select("id")
+        .eq("group_id", group_id)
+        .eq("title", _TARGET_TITLE)
+        .limit(1)
+        .execute()
+    )
+    if res.data:
+        client.table("dinner_events").update({"total_amount": amount}).eq("id", res.data[0]["id"]).execute()
+    else:
+        client.table("dinner_events").insert(
+            {"group_id": group_id, "title": _TARGET_TITLE, "total_amount": amount}
+        ).execute()
+
 
 def get_or_create_group(client, line_group_id: str) -> dict:
     res = client.table("groups").select("*").eq("line_group_id", line_group_id).execute()
@@ -113,7 +146,7 @@ def leaderboard_payload(client, line_group_id: str) -> dict:
         .execute()
         .data
     )
-    return build_liff_payload(members, records, group.get("dinner_target_twd"))
+    return build_liff_payload(members, records, _read_dinner_target(client, group["id"]))
 
 
 def add_record(client, line_group_id: str, target_user_id: str, delta, reason=None) -> dict:
@@ -156,7 +189,7 @@ def set_dinner_target(client, line_group_id: str, amount) -> dict:
         value = clean_target(int(amount))
     except (ValueError, TypeError):
         return {"ok": False, "error": "目標金額要是大於 0 的數字"}
-    client.table("groups").update({"dinner_target_twd": value}).eq("id", group["id"]).execute()
+    _write_dinner_target(client, group["id"], value)
     return {"ok": True, "dinner_target": value}
 
 
@@ -224,24 +257,25 @@ def history(client, group: dict, user_id: str, display_name: str) -> str:
 
 def settlement(client, group: dict, title: str, amount: int | None) -> str:
     if amount is None:
-        amount = group.get("dinner_target_twd")
+        amount = _read_dinner_target(client, group["id"])
     if amount is None:
         return format_settlement_text(title, [], None)
     res = client.table("group_members").select("*").eq("group_id", group["id"]).execute()
-    client.table("dinner_events").insert(
-        {"group_id": group["id"], "title": title, "total_amount": amount}
-    ).execute()
+    if title != _TARGET_TITLE:  # 別把這次算帳寫成目標列
+        client.table("dinner_events").insert(
+            {"group_id": group["id"], "title": title, "total_amount": amount}
+        ).execute()
     return format_settlement_text(title, res.data, amount)
 
 
 def target(client, group: dict, amount: int | None) -> str:
     if amount is None:
-        return format_target_text(group.get("dinner_target_twd"))
+        return format_target_text(_read_dinner_target(client, group["id"]))
     try:
         value = clean_target(amount)
     except ValueError as e:
         return str(e)
-    client.table("groups").update({"dinner_target_twd": value}).eq("id", group["id"]).execute()
+    _write_dinner_target(client, group["id"], value)
     return format_target_text(value)
 
 
