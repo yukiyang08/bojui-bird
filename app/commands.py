@@ -1,3 +1,5 @@
+import re
+
 from app.logic import (
     build_liff_payload,
     clean_record_edit,
@@ -40,10 +42,17 @@ BOT_HELP = "\n".join(
 )
 
 
+_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
 def get_or_create_group(client, line_group_id: str) -> dict:
     res = client.table("groups").select("*").eq("line_group_id", line_group_id).execute()
     if res.data:
         return res.data[0]
+    if _UUID_RE.match(line_group_id or ""):
+        res = client.table("groups").select("*").eq("id", line_group_id).execute()
+        if res.data:
+            return res.data[0]
     res = client.table("groups").insert({"line_group_id": line_group_id}).execute()
     return res.data[0]
 

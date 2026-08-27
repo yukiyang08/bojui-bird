@@ -48,54 +48,61 @@ async def config() -> dict:
     return {"liffId": os.environ.get("LIFF_ID", "")}
 
 
+def _guard(fn, *args, **kwargs) -> dict:
+    """Run a command, turning a DB/library exception into a readable 500 (so the
+    LIFF shows the real reason, e.g. a missing column) and a `{ok: False}` result
+    into a 400."""
+    try:
+        result = fn(*args, **kwargs)
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001 — surface anything the DB layer throws
+        log.exception("%s failed", fn.__name__)
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+    if isinstance(result, dict) and result.get("ok") is False:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
 @app.get("/api/leaderboard/{line_group_id}")
 async def api_leaderboard(line_group_id: str) -> dict:
     # ponytail: no auth check — line_group_id is an unguessable LINE group id,
     # only reachable by opening the LIFF page from inside that group's chat.
-    # Add ID-token verification if the data becomes sensitive.
-    return leaderboard_payload(get_client(), line_group_id)
+    log.info("leaderboard: group=%s", line_group_id)
+    return _guard(leaderboard_payload, get_client(), line_group_id)
 
 
 @app.post("/api/records")
 async def api_add_record(payload: dict = Body(...)) -> dict:
-    result = add_record(
+    return _guard(
+        add_record,
         get_client(),
         payload.get("line_group_id", ""),
         payload.get("target_user_id", ""),
         delta=payload.get("delta"),
         reason=payload.get("reason"),
     )
-    if not result["ok"]:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
 
 
 @app.put("/api/target")
 async def api_set_target(payload: dict = Body(...)) -> dict:
-    result = set_dinner_target(get_client(), payload.get("line_group_id", ""), payload.get("amount"))
-    if not result["ok"]:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    return _guard(
+        set_dinner_target, get_client(), payload.get("line_group_id", ""), payload.get("amount")
+    )
 
 
 @app.patch("/api/records/{record_id}")
 async def api_edit_record(record_id: str, payload: dict = Body(...)) -> dict:
     # ponytail: same no-auth trust model as api_leaderboard — the record id is
     # only handed out by that group-scoped endpoint.
-    result = edit_record(
-        get_client(), record_id, delta=payload.get("delta"), reason=payload.get("reason")
+    return _guard(
+        edit_record, get_client(), record_id, delta=payload.get("delta"), reason=payload.get("reason")
     )
-    if not result["ok"]:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
 
 
 @app.delete("/api/records/{record_id}")
 async def api_delete_record(record_id: str) -> dict:
-    result = delete_record(get_client(), record_id)
-    if not result["ok"]:
-        raise HTTPException(status_code=400, detail=result["error"])
-    return result
+    return _guard(delete_record, get_client(), record_id)
 
 
 @app.post("/callback")
@@ -109,8 +116,12 @@ async def callback(request: Request, x_line_signature: str = Header(alias="X-Lin
     for event in payload.get("events", []):
         if event.get("type") != "message" or event["message"].get("type") != "text":
             continue
+        src = event.get("source", {})
         log.info(
-            "event: source=%s text=%r", event.get("source", {}).get("type"), event["message"].get("text")
+            "event: source=%s group=%s text=%r",
+            src.get("type"),
+            src.get("groupId"),
+            event["message"].get("text"),
         )
         reply_text = handle_message(client, event)
         log.info("reply: %r", reply_text)

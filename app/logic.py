@@ -20,15 +20,17 @@ def extract_mention(text: str, message: dict) -> tuple[str, str, str] | None:
 
 
 def without_first_mention(text: str, message: dict) -> str | None:
-    """`text` with the first @mention span cut out (whoever it points at), so a
-    point command can be written mention-first: '@小明 +1 遲到'. None if there is
-    no mention at all."""
+    """`text` with the first @mention's span sliced out and trimmed, so a
+    mention-first message like `@小明 +1 遲到` becomes `+1 遲到`. None when there
+    is no usable mention."""
     mentionees = (message.get("mention") or {}).get("mentionees", [])
     if not mentionees:
         return None
     m = mentionees[0]
-    i, n = m["index"], m["length"]
-    return (text[:i] + text[i + n :]).strip()
+    idx, length = m.get("index"), m.get("length")
+    if idx is None or length is None:
+        return None
+    return (text[:idx] + text[idx + length :]).strip()
 
 
 def mention_targets_self(message: dict) -> bool:
