@@ -31,45 +31,128 @@ def extract_reason(remaining: str, delta: int) -> str:
     return remaining.strip()
 
 
-def parse_settlement_command(text: str) -> tuple[str, int] | None:
-    """`!算帳 續攤火鍋 11880` -> ("續攤火鍋", 11880); `!算帳 11880` -> ("聚餐", 11880)."""
-    remainder = text[len("!算帳") :].strip()
-    if not remainder:
-        return None
-    tokens = remainder.split()
-    amount_str = tokens[-1]
-    if not amount_str.isdigit():
-        return None
-    title = " ".join(tokens[:-1]) or "聚餐"
-    return title, int(amount_str)
+def parse_settlement_command(text: str) -> tuple[str, int | None]:
+    """`!算帳 續攤火鍋 11880` -> ("續攤火鍋", 11880); `!算帳 11880` -> ("聚餐", 11880);
+    `!算帳 火鍋` -> ("火鍋", None); `!算帳` -> ("聚餐", None). A `None` amount means
+    "use the group's dinner target"."""
+    tokens = text[len("!算帳") :].strip().split()
+    if not tokens:
+        return "聚餐", None
+    if tokens[-1].isdigit():
+        return " ".join(tokens[:-1]) or "聚餐", int(tokens[-1])
+    return " ".join(tokens) or "聚餐", None
 
 
-def calc_settlement(points: list[int], amount: int, point_value: int) -> list[int]:
-    """Even split, then shifted by each person's points, then the rounding
-    remainder is dumped onto the last person so the total matches exactly."""
+def parse_target_command(text: str) -> int | None:
+    """`!目標 12000` -> 12000; `!目標` (or anything non-numeric) -> None, meaning
+    "just show the current target"."""
+    tokens = text[len("!目標") :].strip().split()
+    return int(tokens[0]) if tokens and tokens[0].isdigit() else None
+
+
+def clean_target(amount: int) -> int:
+    if amount <= 0:
+        raise ValueError("目標金額要大於 0")
+    return int(amount)
+
+
+def calc_settlement(points: list[int], amount: int) -> list[int]:
+    """Split `amount` by score: each person's share is weighted by how far their
+    score sits below the top score, so the highest scorer pays the smallest share
+    and the lowest scorer the largest. Every weight is >= 1, so no one is ever
+    pushed to a negative payment ("refund"), and the shares always sum to
+    `amount`. Everyone tied -> even split."""
     n = len(points)
     if n == 0:
         return []
-    base = amount / n
-    rounded = [round(base + p * point_value) for p in points]
-    rounded[-1] += amount - sum(rounded)  # ponytail: last member absorbs rounding, fine for small groups
-    return rounded
+    top = max(points)
+    weights = [(top - p) + 1 for p in points]
+    total_w = sum(weights)
+    pays = [round(amount * w / total_w) for w in weights]
+    # absorb rounding drift on the current largest payer — big enough to stay >= 0
+    biggest = max(range(n), key=lambda k: pays[k])
+    pays[biggest] += amount - sum(pays)
+    return pays
 
 
 def leaderboard_data(members: list[dict]) -> dict:
-    sorted_members = sorted(members, key=lambda m: m["total_points"])
+    by_points_desc = sorted(members, key=lambda m: m["total_points"], reverse=True)
     keep = lambda ms: [{"display_name": m["display_name"], "total_points": m["total_points"]} for m in ms]
-    return {"merit": keep(sorted_members[:5]), "sinner": keep(list(reversed(sorted_members))[:5])}
+    return {"merit": keep(by_points_desc[:5]), "sinner": keep(list(reversed(by_points_desc))[:5])}
+
+
+def build_liff_payload(
+    members: list[dict],
+    records: list[dict],
+    dinner_target: int | None = None,
+    log_size: int = 20,
+) -> dict:
+    """LIFF page shape: one overall ranking (highest score first, i.e. most merit
+    on top) where each row also carries `pay` — what that person would owe for
+    the dinner right now at the current target and points (None if no target) —
+    separate recent-activity feeds for good and bad deeds, the group's dinner
+    target, and a member list for the "add a record" picker. `records` is
+    expected newest-first. Each log entry carries `id` so the page can edit,
+    delete, or add alongside it."""
+    ranked = sorted(members, key=lambda m: m["total_points"], reverse=True)
+    pays = (
+        calc_settlement([m["total_points"] for m in ranked], dinner_target)
+        if dinner_target and ranked
+        else None
+    )
+    ranking = [
+        {
+            "display_name": m["display_name"],
+            "total_points": m["total_points"],
+            "pay": pays[i] if pays else None,
+        }
+        for i, m in enumerate(ranked)
+    ]
+    names = {m["line_user_id"]: m["display_name"] for m in members}
+    entry = lambda r: {
+        "id": r.get("id"),
+        "display_name": names.get(r["target_user_id"], "?"),
+        "delta": r["delta"],
+        "reason": r.get("reason") or "",
+        "created_at": r.get("created_at"),
+    }
+    merit_log = [entry(r) for r in records if r["delta"] > 0][:log_size]
+    sin_log = [entry(r) for r in records if r["delta"] < 0][:log_size]
+    member_list = sorted(
+        ({"line_user_id": m["line_user_id"], "display_name": m["display_name"]} for m in members),
+        key=lambda m: m["display_name"] or "",
+    )
+    return {
+        "ranking": ranking,
+        "merit_log": merit_log,
+        "sin_log": sin_log,
+        "dinner_target": dinner_target,
+        "members": member_list,
+    }
+
+
+def clean_record_edit(delta, reason) -> dict:
+    """Validate an edit from the LIFF page and return only the point_records
+    columns to update. `None` means 'leave this field alone'."""
+    update: dict = {}
+    if delta is not None:
+        d = int(delta)
+        if d == 0:
+            raise ValueError("點數不能是 0")
+        update["delta"] = d
+    if reason is not None:
+        update["reason"] = reason.strip() or None
+    return update
 
 
 def format_leaderboard_text(members: list[dict]) -> str:
     if not members:
         return "還沒有任何記點紀錄"
     data = leaderboard_data(members)
-    lines = ["功德榜（點數最低）"]
+    lines = ["功德榜（點數最高）"]
     lines += [f"{i + 1}. {m['display_name']} {m['total_points']} 點" for i, m in enumerate(data["merit"])]
     lines.append("")
-    lines.append("罪人榜（點數最高）")
+    lines.append("罪人榜（點數最低）")
     lines += [f"{i + 1}. {m['display_name']} {m['total_points']} 點" for i, m in enumerate(data["sinner"])]
     return "\n".join(lines)
 
@@ -85,11 +168,20 @@ def format_history_text(display_name: str, records: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def format_settlement_text(title: str, members: list[dict], amount: int, point_value: int) -> str:
+def format_settlement_text(title: str, members: list[dict], amount: int | None) -> str:
+    if amount is None:
+        return "還沒設定大餐目標金額，用 `!目標 12000` 設定，或 `!算帳 12000` 直接給金額"
     if not members:
         return "還沒有人有記點紀錄，無法算帳"
-    payments = calc_settlement([m["total_points"] for m in members], amount, point_value)
-    lines = [f"{title}｜總金額 {amount} 元，共 {len(members)} 人"]
-    for m, pay in zip(members, payments):
-        lines.append(f"{m['display_name']}：{pay} 元")
+    ranked = sorted(members, key=lambda m: m["total_points"], reverse=True)
+    payments = calc_settlement([m["total_points"] for m in ranked], amount)
+    lines = [f"{title}｜總金額 {amount} 元，共 {len(ranked)} 人"]
+    for m, pay in zip(ranked, payments):
+        lines.append(f"{m['display_name']}（{m['total_points']:+d}）：{pay} 元")
     return "\n".join(lines)
+
+
+def format_target_text(amount: int | None) -> str:
+    if amount is None:
+        return "目前沒有設定大餐目標金額，用 `!目標 12000` 設定"
+    return f"大餐目標金額：{amount} 元（`!算帳` 不帶數字就用這個金額）"

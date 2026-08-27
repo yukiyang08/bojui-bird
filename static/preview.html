@@ -3,8 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>不揪鳥排行榜</title>
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<title>不揪鳥排行榜（樣式預覽）</title>
 <script src="https://code.iconify.design/iconify-icon/2.3.0/iconify-icon.min.js"></script>
 <style>
   :root {
@@ -180,57 +179,132 @@
     <h1>不揪鳥</h1>
     <button class="head-add" data-act="add"><iconify-icon icon="lucide:plus"></iconify-icon>新增功績</button>
   </header>
-  <div id="app"><p class="state"><iconify-icon icon="lucide:loader"></iconify-icon>載入中</p></div>
+  <div id="app"></div>
+  <p class="foot" style="margin-top:24px">樣式預覽 · 假資料，所有編輯只在本機生效</p>
 </div>
 
 <script>
-const state = { groupId: null, data: null };
+const state = { groupId: "demo", data: null };
 const app = document.getElementById("app");
 
 const ICON = {
   target: "lucide:target",
-  trophy: "lucide:trophy",
-  merit: "lucide:heart-handshake",
-  sin: "lucide:gavel",
   chev: "lucide:chevron-right",
 };
 
-async function main() {
-  const cfg = await fetch("/api/config").then((r) => r.json());
-  if (!cfg.liffId) return showState("lucide:settings", "尚未設定 LIFF_ID");
+const DB = {
+  dinner_target: 12000,
+  members: [
+    { line_user_id: "U_ken", display_name: "Ken" },
+    { line_user_id: "U_ming", display_name: "小明" },
+    { line_user_id: "U_mei", display_name: "小美" },
+    { line_user_id: "U_zhe", display_name: "阿哲" },
+    { line_user_id: "U_fei", display_name: "阿肥" },
+    { line_user_id: "U_wang", display_name: "老王" },
+    { line_user_id: "U_dou", display_name: "土豆" },
+    { line_user_id: "U_mimi", display_name: "咪咪" },
+  ],
+  ranking: [
+    { display_name: "老王", total_points: 8 },
+    { display_name: "小美", total_points: 5 },
+    { display_name: "阿哲", total_points: 3 },
+    { display_name: "Ken", total_points: 1 },
+    { display_name: "土豆", total_points: 0 },
+    { display_name: "阿肥", total_points: -1 },
+    { display_name: "咪咪", total_points: -3 },
+    { display_name: "小明", total_points: -6 },
+  ],
+  merit_log: [
+    { id: "m1", display_name: "老王", delta: 2, reason: "買整團手搖", created_at: "2026-08-27T10:00:00Z" },
+    { id: "m2", display_name: "小美", delta: 1, reason: "揪聚餐訂位", created_at: "2026-08-26T12:00:00Z" },
+    { id: "m3", display_name: "阿哲", delta: 1, reason: "", created_at: "2026-08-25T09:00:00Z" },
+  ],
+  sin_log: [
+    { id: "s1", display_name: "小明", delta: -1, reason: "遲到 40 分鐘", created_at: "2026-08-27T09:20:00Z" },
+    { id: "s2", display_name: "咪咪", delta: -2, reason: "放鳥", created_at: "2026-08-26T20:00:00Z" },
+    { id: "s3", display_name: "阿肥", delta: -1, reason: "已讀不回", created_at: "2026-08-24T18:00:00Z" },
+  ],
+};
 
-  await liff.init({ liffId: cfg.liffId });
-  const ctx = liff.getContext();
-  if (!ctx || ctx.type !== "group") return showState("lucide:users", "請從群組聊天室開啟這個頁面");
-
-  state.groupId = ctx.groupId;
-  document.addEventListener("click", (ev) => {
-    const row = ev.target.closest("[data-kind]");
-    if (row) return openEditSheet(row.dataset.kind, row.dataset.id);
-    const act = ev.target.closest("[data-act]");
-    if (act && act.dataset.act === "target") return openTargetSheet();
-    if (act && act.dataset.act === "add") return openAddSheet();
-  });
-  await reload();
-}
+document.addEventListener("click", (ev) => {
+  const row = ev.target.closest("[data-kind]");
+  if (row) return openEditSheet(row.dataset.kind, row.dataset.id);
+  const act = ev.target.closest("[data-act]");
+  if (act && act.dataset.act === "target") return openTargetSheet();
+  if (act && act.dataset.act === "add") return openAddSheet();
+});
+reload();
 
 async function reload() {
-  const data = await fetch(`/api/leaderboard/${state.groupId}`).then((r) => r.json());
+  const data = JSON.parse(JSON.stringify(DB));
+  const ranked = data.ranking.slice().sort((a, b) => b.total_points - a.total_points);
+  const pays =
+    data.dinner_target && ranked.length
+      ? calcSettlement(ranked.map((m) => m.total_points), data.dinner_target)
+      : null;
+  data.ranking = ranked.map((m, i) => ({ ...m, pay: pays ? pays[i] : null }));
   render(data);
 }
 
-function showState(icon, text) {
-  app.innerHTML = `<p class="state"><iconify-icon icon="${icon}"></iconify-icon>${escapeHtml(text)}</p>`;
+// 依分數分攤：分數越高付越少，權重都 >= 1 所以不會有人是負的（退錢）
+function calcSettlement(points, amount) {
+  const n = points.length;
+  if (!n) return [];
+  const top = Math.max(...points);
+  const w = points.map((p) => top - p + 1);
+  const tw = w.reduce((a, b) => a + b, 0);
+  const pays = w.map((x) => Math.round((amount * x) / tw));
+  let big = 0;
+  pays.forEach((p, i) => {
+    if (p > pays[big]) big = i;
+  });
+  pays[big] += amount - pays.reduce((a, b) => a + b, 0);
+  return pays;
+}
+
+// 假 API：直接改本機 DB
+async function api(method, url, body) {
+  if (url === "/api/target" && method === "PUT") {
+    DB.dinner_target = body.amount;
+    return { ok: true };
+  }
+  if (url === "/api/records" && method === "POST") {
+    const name = (DB.members.find((m) => m.line_user_id === body.target_user_id) || {}).display_name || "?";
+    const rec = { id: "x" + Date.now(), display_name: name, delta: body.delta, reason: (body.reason || "").trim(), created_at: new Date().toISOString() };
+    DB[body.delta > 0 ? "merit_log" : "sin_log"].unshift(rec);
+    const r = DB.ranking.find((m) => m.display_name === name);
+    if (r) r.total_points += body.delta;
+    return { ok: true };
+  }
+  const id = url.split("/").pop();
+  for (const key of ["merit_log", "sin_log"]) {
+    const i = DB[key].findIndex((e) => e.id === id);
+    if (i < 0) continue;
+    const rec = DB[key][i];
+    if (method === "DELETE") {
+      DB[key].splice(i, 1);
+      const r = DB.ranking.find((m) => m.display_name === rec.display_name);
+      if (r) r.total_points -= rec.delta;
+    } else if (method === "PATCH") {
+      const r = DB.ranking.find((m) => m.display_name === rec.display_name);
+      if (r) r.total_points += body.delta - rec.delta;
+      rec.delta = body.delta;
+      rec.reason = (body.reason || "").trim();
+      const wantKey = body.delta > 0 ? "merit_log" : "sin_log";
+      if (wantKey !== key) {
+        DB[key].splice(i, 1);
+        DB[wantKey].unshift(rec);
+      }
+    }
+  }
+  return { ok: true };
 }
 
 function render(data) {
   state.data = data;
   app.innerHTML =
     section("大餐目標", targetGroup(data.dinner_target)) +
-    section(
-      data.dinner_target ? "總排名 · 目前餐費試算" : "總排名",
-      rankingGroup(data.ranking || [])
-    ) +
+    section(data.dinner_target ? "總排名 · 目前餐費試算" : "總排名", rankingGroup(data.ranking || [])) +
     section("功德紀錄", logGroup("merit", data.merit_log || [], "還沒有人做好事")) +
     section("犯罪紀錄", logGroup("sin", data.sin_log || [], "目前無人犯案")) +
     `<p class="foot">右上角「記一筆」手動加紀錄 · 點任一筆紀錄可修改或刪除</p>`;
@@ -455,17 +529,6 @@ function openTargetSheet() {
   });
 }
 
-async function api(method, url, body) {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(j.detail || `錯誤 ${res.status}`);
-  return j;
-}
-
 function fmtMoney(n) {
   const s = "$" + Math.abs(n).toLocaleString();
   return n < 0 ? "退 " + s : s;
@@ -480,8 +543,6 @@ function fmtDate(s) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-
-main().catch((err) => showState("lucide:frown", "載入失敗：" + err.message));
 </script>
 </body>
 </html>

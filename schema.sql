@@ -2,8 +2,12 @@ create table groups (
     id uuid primary key default gen_random_uuid(),
     line_group_id text not null unique,
     point_value_twd integer not null default 100,
+    dinner_target_twd integer,               -- 大餐目標金額，!算帳 沒帶數字時的預設
     created_at timestamptz not null default now()
 );
+
+-- 既有資料庫補這欄：
+-- alter table groups add column dinner_target_twd integer;
 
 create table group_members (
     id uuid primary key default gen_random_uuid(),

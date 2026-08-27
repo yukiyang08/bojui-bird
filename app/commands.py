@@ -1,12 +1,16 @@
 from app.logic import (
+    build_liff_payload,
+    clean_record_edit,
+    clean_target,
     extract_mention,
     extract_reason,
     format_history_text,
     format_leaderboard_text,
     format_settlement_text,
-    leaderboard_data,
+    format_target_text,
     parse_point_delta,
     parse_settlement_command,
+    parse_target_command,
 )
 
 
@@ -62,10 +66,112 @@ def leaderboard(client, group: dict) -> str:
 
 
 def leaderboard_payload(client, line_group_id: str) -> dict:
-    """Same query as `leaderboard`, JSON-shaped for the LIFF page."""
+    """Overall ranking + recent good/bad activity, JSON-shaped for the LIFF page."""
     group = get_or_create_group(client, line_group_id)
-    res = client.table("group_members").select("*").eq("group_id", group["id"]).execute()
-    return leaderboard_data(res.data)
+    members = client.table("group_members").select("*").eq("group_id", group["id"]).execute().data
+    records = (
+        client.table("point_records")
+        .select("*")
+        .eq("group_id", group["id"])
+        .order("created_at", desc=True)
+        .limit(50)
+        .execute()
+        .data
+    )
+    return build_liff_payload(members, records, group.get("dinner_target_twd"))
+
+
+def add_record(client, line_group_id: str, target_user_id: str, delta, reason=None) -> dict:
+    """Manually add a record from the LIFF page. Only existing members can be a
+    target (the page picks from the member list). ponytail: no auth, same trust
+    model as the rest of the /api/* endpoints."""
+    group = get_or_create_group(client, line_group_id)
+    member = (
+        client.table("group_members")
+        .select("*")
+        .eq("group_id", group["id"])
+        .eq("line_user_id", target_user_id)
+        .execute()
+        .data
+    )
+    if not member:
+        return {"ok": False, "error": "這個人不在群組名單裡"}
+    if delta is None:
+        return {"ok": False, "error": "要給點數"}
+    try:
+        clean = clean_record_edit(delta, reason)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    client.table("point_records").insert(
+        {
+            "group_id": group["id"],
+            "target_user_id": target_user_id,
+            "recorder_user_id": "liff",
+            "delta": clean["delta"],
+            "reason": clean.get("reason"),
+        }
+    ).execute()
+    total = _recompute_member_total(client, group["id"], target_user_id)
+    return {"ok": True, "total_points": total}
+
+
+def set_dinner_target(client, line_group_id: str, amount) -> dict:
+    group = get_or_create_group(client, line_group_id)
+    try:
+        value = clean_target(int(amount))
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "目標金額要是大於 0 的數字"}
+    client.table("groups").update({"dinner_target_twd": value}).eq("id", group["id"]).execute()
+    return {"ok": True, "dinner_target": value}
+
+
+def _recompute_member_total(client, group_id: str, target_user_id: str) -> int:
+    """Rebuild a member's stored total from the sum of their point_records, so
+    edits and deletes can't drift the running total."""
+    rows = (
+        client.table("point_records")
+        .select("delta")
+        .eq("group_id", group_id)
+        .eq("target_user_id", target_user_id)
+        .execute()
+        .data
+    )
+    total = sum(r["delta"] for r in rows)
+    client.table("group_members").update({"total_points": total}).eq("group_id", group_id).eq(
+        "line_user_id", target_user_id
+    ).execute()
+    return total
+
+
+def _fetch_record(client, record_id: str) -> dict | None:
+    res = client.table("point_records").select("*").eq("id", record_id).execute()
+    return res.data[0] if res.data else None
+
+
+def edit_record(client, record_id: str, delta=None, reason=None) -> dict:
+    """Update a past record's points and/or reason, then re-total the member.
+    ponytail: no auth — same trust model as the read API (needs the record id,
+    only obtainable via the group-scoped leaderboard endpoint)."""
+    record = _fetch_record(client, record_id)
+    if not record:
+        return {"ok": False, "error": "找不到這筆紀錄"}
+    try:
+        update = clean_record_edit(delta, reason)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    if update:
+        client.table("point_records").update(update).eq("id", record_id).execute()
+    total = _recompute_member_total(client, record["group_id"], record["target_user_id"])
+    return {"ok": True, "total_points": total}
+
+
+def delete_record(client, record_id: str) -> dict:
+    record = _fetch_record(client, record_id)
+    if not record:
+        return {"ok": False, "error": "找不到這筆紀錄"}
+    client.table("point_records").delete().eq("id", record_id).execute()
+    total = _recompute_member_total(client, record["group_id"], record["target_user_id"])
+    return {"ok": True, "total_points": total}
 
 
 def history(client, group: dict, user_id: str, display_name: str) -> str:
@@ -81,12 +187,27 @@ def history(client, group: dict, user_id: str, display_name: str) -> str:
     return format_history_text(display_name, res.data)
 
 
-def settlement(client, group: dict, title: str, amount: int) -> str:
+def settlement(client, group: dict, title: str, amount: int | None) -> str:
+    if amount is None:
+        amount = group.get("dinner_target_twd")
+    if amount is None:
+        return format_settlement_text(title, [], None)
     res = client.table("group_members").select("*").eq("group_id", group["id"]).execute()
     client.table("dinner_events").insert(
         {"group_id": group["id"], "title": title, "total_amount": amount}
     ).execute()
-    return format_settlement_text(title, res.data, amount, group.get("point_value_twd", 100))
+    return format_settlement_text(title, res.data, amount)
+
+
+def target(client, group: dict, amount: int | None) -> str:
+    if amount is None:
+        return format_target_text(group.get("dinner_target_twd"))
+    try:
+        value = clean_target(amount)
+    except ValueError as e:
+        return str(e)
+    client.table("groups").update({"dinner_target_twd": value}).eq("id", group["id"]).execute()
+    return format_target_text(value)
 
 
 def handle_message(client, event: dict) -> str | None:
@@ -108,18 +229,18 @@ def handle_message(client, event: dict) -> str | None:
         user_id, display_name, _ = mention
         return history(client, group, user_id, display_name)
 
+    if text.startswith("!目標"):
+        return target(client, group, parse_target_command(text))
+
     if text.startswith("!算帳"):
-        parsed = parse_settlement_command(text)
-        if not parsed:
-            return "格式：!算帳 [聚餐名稱] 金額，例如：!算帳 續攤火鍋 11880"
-        title, amount = parsed
+        title, amount = parse_settlement_command(text)
         return settlement(client, group, title, amount)
 
     delta = parse_point_delta(text)
     if delta is not None:
         mention = extract_mention(text, message)
         if not mention:
-            return "請 @ 對象，例如：+1 @小明 遲到"
+            return "請 @ 對象，例如：-1 @小明 遲到 或 +1 @老王 買手搖"
         user_id, display_name, remaining = mention
         reason = extract_reason(remaining, delta)
         recorder_user_id = source.get("userId", "unknown")
