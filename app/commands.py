@@ -16,6 +16,27 @@ from app.logic import (
 
 BOT_DECLINE = "我只負責記帳 不負責付錢喔 不揪不揪"
 
+BOT_HELP = "\n".join(
+    [
+        "不揪不揪鳥 使用說明",
+        "",
+        "記點（記得 @ 對象）",
+        "　+1 @小明 買飲料　做好事，加分",
+        "　-1 @小明 遲到　　做錯事，扣分",
+        "",
+        "排行榜",
+        "　!排行榜　　　看功德榜 / 罪人榜",
+        "　!查 @小明　　看某人最近紀錄",
+        "",
+        "聚餐算帳",
+        "　!目標 12000　　設定大餐目標金額",
+        "　!算帳　　　　　依分數分攤目標金額（分數高付少，沒人要退錢）",
+        "　!算帳 火鍋 3000　直接給名稱和金額",
+        "",
+        "排行榜網頁可以編輯 / 手動新增紀錄、改目標金額",
+    ]
+)
+
 
 def get_or_create_group(client, line_group_id: str) -> dict:
     res = client.table("groups").select("*").eq("line_group_id", line_group_id).execute()
@@ -226,6 +247,9 @@ def handle_message(client, event: dict) -> str | None:
     text = message["text"].translate(_FULLWIDTH).strip()
     group = get_or_create_group(client, source["groupId"])
 
+    if text.startswith("!說明") or text.startswith("!help") or text.startswith("!使用說明"):
+        return BOT_HELP
+
     if text.startswith("!排行榜"):
         return leaderboard(client, group)
 
@@ -254,5 +278,8 @@ def handle_message(client, event: dict) -> str | None:
         reason = extract_reason(remaining, delta)
         recorder_user_id = source.get("userId", "unknown")
         return add_point(client, group, recorder_user_id, delta, user_id, display_name, reason)
+
+    if mention_targets_self(message):
+        return BOT_HELP
 
     return None
