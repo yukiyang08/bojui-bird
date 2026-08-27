@@ -16,6 +16,16 @@ const TAGLINES = [
   "揪團的是英雄，放鳥的是鳥",
 ];
 
+/* 12 種情緒圖：static/images/emotions/<name>.png
+   angry happy playful cool sad confused surprised sleepy love cheer laugh shy */
+const emoSrc = (name) => `images/emotions/${name}.png`;
+function emoImg(name, cls) {
+  return `<img class="emo${cls ? " " + cls : ""}" src="${emoSrc(name)}" alt="" loading="lazy">`;
+}
+function moodFace(points) {
+  return points > 0 ? "laugh" : points < 0 ? "angry" : "happy";
+}
+
 /* ---------- helpers ---------- */
 
 function escapeHtml(s) {
@@ -78,8 +88,17 @@ function initChrome() {
   if (say) say.textContent = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
 }
 
-function showState(icon, text) {
-  app.innerHTML = `<p class="state"><iconify-icon icon="${icon}"></iconify-icon>${escapeHtml(text)}</p>`;
+const EMO_NAMES = new Set([
+  "angry", "happy", "playful", "cool", "sad", "confused",
+  "surprised", "sleepy", "love", "cheer", "laugh", "shy",
+]);
+
+// `visual` can be an emotion name (e.g. "sad") or an iconify id (e.g. "lucide:loader")
+function showState(visual, text) {
+  const art = EMO_NAMES.has(visual)
+    ? emoImg(visual, "state-emo")
+    : `<iconify-icon icon="${visual}"></iconify-icon>`;
+  app.innerHTML = `<p class="state">${art}${escapeHtml(text)}</p>`;
 }
 
 function wireClicks() {
@@ -106,6 +125,14 @@ function wireClicks() {
 function render(data) {
   state.data = data;
   const ranking = data.ranking || [];
+
+  const mascot = document.querySelector(".mascot");
+  if (mascot) {
+    mascot.innerHTML = ranking.length
+      ? emoImg(moodFace(ranking[0].total_points))
+      : `<img src="images/logo.png" alt="不揪鳥" width="40" height="40">`;
+  }
+
   app.innerHTML =
     podiumBlock(ranking) +
     section("大餐基金", "lucide:piggy-bank", targetGroup(data.dinner_target)) +
@@ -130,9 +157,11 @@ function section(label, icon, groupHtml) {
   return `<p class="label">${ic}${label}</p><div class="group">${groupHtml}</div>`;
 }
 
+const POD_FACE = ["cool", "happy", "love"];
+
 function podiumBlock(ranking) {
   if (!ranking.length) {
-    return `<div class="podium empty">${birdSvg(42)}<p>還沒有戰績<br>快去記第一筆</p></div>`;
+    return `<div class="podium empty">${emoImg("sleepy", "big")}<p>還沒有戰績<br>快去記第一筆</p></div>`;
   }
   const top = ranking.slice(0, 3);
   const order = top.length === 3 ? [1, 0, 2] : top.length === 2 ? [1, 0] : [0];
@@ -142,9 +171,10 @@ function podiumBlock(ranking) {
       const m = top[idx];
       const p = m.total_points;
       const cls = p > 0 ? "pos" : p < 0 ? "neg" : "zero";
+      const face = idx === 0 && p <= 0 ? "confused" : POD_FACE[idx];
       return (
         `<div class="pod pod${idx + 1}">` +
-        `<div class="pod-bird">${birdSvg(hashHue(m.display_name))}<span class="medal">${medals[idx]}</span></div>` +
+        `<div class="pod-bird">${emoImg(face)}<span class="medal">${medals[idx]}</span></div>` +
         `<div class="pod-name">${escapeHtml(m.display_name)}</div>` +
         `<div class="pod-step">` +
         `<span class="pod-pts ${cls}" data-count="${p}">0</span>` +
@@ -217,7 +247,7 @@ function logGroup(kind, entries, emptyText) {
       const sub = e.reason ? `<div class="sub">${escapeHtml(e.reason)}</div>` : "";
       return (
         `<button class="line log ${cls}" data-kind="${kind}" data-id="${escapeHtml(e.id)}">` +
-        `<span class="av">${birdSvg(hashHue(e.display_name))}</span>` +
+        `<span class="av">${emoImg(e.delta > 0 ? "happy" : "angry", "sm")}</span>` +
         `<span class="main"><div class="name">${escapeHtml(e.display_name)}</div>${sub}</span>` +
         `<span class="trail"><span class="pts ${cls}">${e.delta > 0 ? "+" : ""}${e.delta}</span>` +
         `<span class="meta">${fmtDate(e.created_at)}</span></span>` +
@@ -331,13 +361,25 @@ function shake() {
   setTimeout(() => document.body.classList.remove("shake"), 450);
 }
 
+function flashEmotion(name) {
+  if (REDUCE) return;
+  const img = document.createElement("img");
+  img.className = "emo-flash";
+  img.src = emoSrc(name);
+  img.alt = "";
+  document.body.appendChild(img);
+  setTimeout(() => img.remove(), 950);
+}
+
 function celebrate(delta) {
   if (delta > 0) {
     buzz(15);
     burst(window.innerWidth / 2, 130, 90);
+    flashEmotion("laugh");
   } else {
     buzz([8, 40, 8]);
     if (!REDUCE) shake();
+    flashEmotion("angry");
   }
 }
 

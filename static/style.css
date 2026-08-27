@@ -275,3 +275,26 @@ body.shake { animation: shk 0.45s; }
 .btn.ghost iconify-icon { font-size: 16px; }
 .btn:disabled { opacity: 0.5; }
 .err { color: var(--neg); font-size: 13px; margin: 10px 0 0; min-height: 1em; text-align: center; }
+
+/* ---- emotions ---- */
+.emo { display: block; object-fit: contain; }
+.pod-bird img.emo { width: 40px; height: 40px; transition: transform 0.12s; }
+.pod1 .pod-bird img.emo { width: 50px; height: 50px; }
+.pod-bird:active img.emo { transform: translateY(-4px) scale(1.08); }
+.podium.empty img.emo.big { width: 78px; height: 78px; margin-bottom: 8px; }
+.line .av img.emo.sm { width: 30px; height: 30px; }
+.state .emo.state-emo { width: 66px; height: 66px; margin: 0 auto 10px; }
+
+.emo-flash {
+  position: fixed; left: 50%; top: 34%;
+  width: 132px; height: 132px; margin: -66px 0 0 -66px;
+  z-index: 50; pointer-events: none;
+  animation: emoPop 0.95s ease forwards;
+}
+@keyframes emoPop {
+  0%   { opacity: 0; transform: scale(0.3) rotate(-16deg); }
+  22%  { opacity: 1; transform: scale(1.06) rotate(4deg); }
+  70%  { opacity: 1; transform: scale(1) rotate(0); }
+  100% { opacity: 0; transform: scale(0.96) translateY(-14px); }
+}
+@media (prefers-reduced-motion: reduce) { .emo-flash { display: none; } }

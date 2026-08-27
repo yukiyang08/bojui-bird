@@ -76,7 +76,7 @@ let step = "start";
 async function main() {
   step = "fetch /api/config";
   const cfg = await apiFetch(`/api/config`).then((r) => r.json());
-  if (!cfg.liffId) return showState("lucide:settings", "尚未設定 LIFF_ID");
+  if (!cfg.liffId) return showState("confused", "尚未設定 LIFF_ID");
 
   step = "liff.init (id=" + cfg.liffId + ")";
   await liff.init({ liffId: cfg.liffId });
@@ -93,7 +93,7 @@ async function main() {
     body: JSON.stringify({ ctx, urlGroup, isInClient: liff.isInClient() }),
   }).catch(() => {});
   if (!groupId) {
-    return showState("lucide:users", "請從群組裡的「!排行榜」連結開啟這個頁面");
+    return showState("sleepy", "請從群組裡的「!排行榜」連結開啟這個頁面");
   }
 
   step = "reloadData";
@@ -102,7 +102,7 @@ async function main() {
   await reloadData();
 }
 
-main().catch((err) => showState("lucide:frown", "載入失敗 @ " + step + "：" + (err && err.message || err)));
+main().catch((err) => showState("sad", "載入失敗 @ " + step + "：" + (err && err.message || err)));
 </script>
 </body>
 </html>

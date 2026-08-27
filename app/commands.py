@@ -24,28 +24,20 @@ def liff_url(group: dict) -> str:
     liff_id = os.environ.get("LIFF_ID", "")
     return f"https://liff.line.me/{liff_id}?group={group['line_group_id']}" if liff_id else ""
 
-BOT_HELP = "\n".join(
-    [
+
+def bot_help(group: dict) -> str:
+    lines = [
         "不揪不揪鳥 使用說明",
         "",
-        "記點（記得 @ 對象，數字前後都行）",
-        "　@小明 +1 買飲料　做好事，加分",
-        "　@小明 -1 遲到　　做錯事，扣分",
-        "　+1 @小明 買飲料　也可以（+/- 放最前面）",
-        "",
-        "排行榜",
-        "　!排行榜　　　看功德榜 / 罪人榜 + 網頁連結",
-        "　!網頁　　　　只要排行榜網頁連結",
-        "　!查 @小明　　看某人最近紀錄",
-        "",
-        "聚餐算帳",
-        "　!目標 12000　　設定大餐目標金額",
-        "　!算帳　　　　　依分數分攤目標金額（分數高付少，沒人要退錢）",
-        "　!算帳 火鍋 3000　直接給名稱和金額",
-        "",
-        "排行榜網頁可以編輯 / 手動新增紀錄、改目標金額",
+        "記點：@小明 +1 買飲料 / @小明 -1 遲到",
+        "（+/- 放前面也行）",
+        "!排行榜 ｜ !查 @小明",
+        "!目標 12000 ｜ !算帳 [名稱] [金額]",
     ]
-)
+    url = liff_url(group)
+    if url:
+        lines += ["", "排行榜 / 編輯 / 記一筆：", url]
+    return "\n".join(lines)
 
 
 # 群組的「大餐目標金額」存在 dinner_events 裡、用這個 title 標記的那一列（每組一列，
@@ -293,7 +285,7 @@ def handle_message(client, event: dict) -> str | None:
     group = get_or_create_group(client, source["groupId"])
 
     if text.startswith("!說明") or text.startswith("!help") or text.startswith("!使用說明"):
-        return BOT_HELP
+        return bot_help(group)
 
     if text.startswith("!排行榜"):
         txt = leaderboard(client, group)
@@ -325,7 +317,7 @@ def handle_message(client, event: dict) -> str | None:
         delta = parse_point_delta(without)
 
     if mention_targets_self(message):
-        return BOT_DECLINE if delta is not None else BOT_HELP
+        return BOT_DECLINE if delta is not None else bot_help(group)
 
     if delta is not None:
         mention = extract_mention(text, message)
