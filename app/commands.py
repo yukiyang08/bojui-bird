@@ -1,3 +1,5 @@
+import os
+
 from app.logic import (
     build_liff_payload,
     clean_record_edit,
@@ -17,6 +19,11 @@ from app.logic import (
 
 BOT_DECLINE = "我只負責記帳 不負責付錢喔 不揪不揪"
 
+
+def liff_url(group: dict) -> str:
+    liff_id = os.environ.get("LIFF_ID", "")
+    return f"https://liff.line.me/{liff_id}?group={group['line_group_id']}" if liff_id else ""
+
 BOT_HELP = "\n".join(
     [
         "不揪不揪鳥 使用說明",
@@ -27,7 +34,8 @@ BOT_HELP = "\n".join(
         "　+1 @小明 買飲料　也可以（+/- 放最前面）",
         "",
         "排行榜",
-        "　!排行榜　　　看功德榜 / 罪人榜",
+        "　!排行榜　　　看功德榜 / 罪人榜 + 網頁連結",
+        "　!網頁　　　　只要排行榜網頁連結",
         "　!查 @小明　　看某人最近紀錄",
         "",
         "聚餐算帳",
@@ -288,7 +296,13 @@ def handle_message(client, event: dict) -> str | None:
         return BOT_HELP
 
     if text.startswith("!排行榜"):
-        return leaderboard(client, group)
+        txt = leaderboard(client, group)
+        url = liff_url(group)
+        return f"{txt}\n\n完整排行榜 / 記一筆：\n{url}" if url else txt
+
+    if text.startswith("!網頁") or text.startswith("!連結"):
+        url = liff_url(group)
+        return f"排行榜網頁：\n{url}" if url else "還沒設定 LIFF_ID"
 
     if text.startswith("!查"):
         mention = extract_mention(text, message)

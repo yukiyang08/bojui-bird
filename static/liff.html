@@ -44,6 +44,18 @@ function apiFetch(url, opts = {}) {
 
 initChrome();
 
+// 讀 URL 參數；LIFF 有時會把原始 query 收進 liff.state，兩個地方都找
+function queryParam(name) {
+  const q = new URLSearchParams(location.search);
+  if (q.get(name)) return q.get(name);
+  const state = q.get("liff.state");
+  if (state) {
+    const inner = new URLSearchParams(state[0] === "?" ? state.slice(1) : state);
+    if (inner.get(name)) return inner.get(name);
+  }
+  return null;
+}
+
 async function reloadData() {
   const data = await apiFetch(`/api/leaderboard/${state.groupId}`).then((r) => r.json());
   render(data);
@@ -69,14 +81,23 @@ async function main() {
   step = "liff.init (id=" + cfg.liffId + ")";
   await liff.init({ liffId: cfg.liffId });
 
-  step = "liff.getContext";
+  step = "resolve group";
   const ctx = liff.getContext();
-  if (!ctx || ctx.type !== "group") {
-    return showState("lucide:users", "請從群組聊天室開啟這個頁面（context=" + JSON.stringify(ctx) + "）");
+  // group id 優先從連結帶的 ?group= 拿（bot 產生，一定正確）；
+  // getContext().groupId 只當備援 —— 未連結 bot 時它會給假的 id。
+  const urlGroup = queryParam("group");
+  const groupId = urlGroup || (ctx && ctx.groupId) || "";
+  apiFetch("/api/debug", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ctx, urlGroup, isInClient: liff.isInClient() }),
+  }).catch(() => {});
+  if (!groupId) {
+    return showState("lucide:users", "請從群組裡的「!排行榜」連結開啟這個頁面");
   }
 
   step = "reloadData";
-  state.groupId = ctx.groupId;
+  state.groupId = groupId;
   wireClicks();
   await reloadData();
 }

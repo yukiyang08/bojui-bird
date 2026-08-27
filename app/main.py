@@ -48,6 +48,12 @@ async def config() -> dict:
     return {"liffId": os.environ.get("LIFF_ID", "")}
 
 
+@app.post("/api/debug")
+async def debug(payload: dict = Body(...)) -> dict:
+    log.info("LIFF debug: %s", payload)
+    return {"ok": True}
+
+
 def _guard(fn, *args, **kwargs) -> dict:
     """Run a command, turning a DB/library exception into a readable 500 (so the
     LIFF shows the real reason, e.g. a missing column) and a `{ok: False}` result
