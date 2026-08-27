@@ -1,5 +1,3 @@
-import re
-
 from app.logic import (
     build_liff_payload,
     clean_record_edit,
@@ -42,8 +40,6 @@ BOT_HELP = "\n".join(
 )
 
 
-_UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
-
 # 群組的「大餐目標金額」存在 dinner_events 裡、用這個 title 標記的那一列（每組一列，
 # 會被覆蓋更新）。實際的 !算帳 紀錄用聚餐名稱當 title，不會互相影響。
 _TARGET_TITLE = "大餐目標"
@@ -82,10 +78,6 @@ def get_or_create_group(client, line_group_id: str) -> dict:
     res = client.table("groups").select("*").eq("line_group_id", line_group_id).execute()
     if res.data:
         return res.data[0]
-    if _UUID_RE.match(line_group_id or ""):
-        res = client.table("groups").select("*").eq("id", line_group_id).execute()
-        if res.data:
-            return res.data[0]
     res = client.table("groups").insert({"line_group_id": line_group_id}).execute()
     return res.data[0]
 
