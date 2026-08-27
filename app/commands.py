@@ -12,6 +12,7 @@ from app.logic import (
     parse_point_delta,
     parse_settlement_command,
     parse_target_command,
+    without_first_mention,
 )
 
 BOT_DECLINE = "我只負責記帳 不負責付錢喔 不揪不揪"
@@ -20,9 +21,10 @@ BOT_HELP = "\n".join(
     [
         "不揪不揪鳥 使用說明",
         "",
-        "記點（記得 @ 對象）",
-        "　+1 @小明 買飲料　做好事，加分",
-        "　-1 @小明 遲到　　做錯事，扣分",
+        "記點（記得 @ 對象，數字前後都行）",
+        "　@小明 +1 買飲料　做好事，加分",
+        "　@小明 -1 遲到　　做錯事，扣分",
+        "　+1 @小明 買飲料　也可以（+/- 放最前面）",
         "",
         "排行榜",
         "　!排行榜　　　看功德榜 / 罪人榜",
@@ -267,19 +269,22 @@ def handle_message(client, event: dict) -> str | None:
         title, amount = parse_settlement_command(text)
         return settlement(client, group, title, amount)
 
+    # 記點支援兩種寫法：「+1 @小明 遲到」(+/- 在前) 和「@小明 +1 遲到」(@ 在前)
+    without = without_first_mention(text, message)
     delta = parse_point_delta(text)
+    if delta is None and without is not None:
+        delta = parse_point_delta(without)
+
+    if mention_targets_self(message):
+        return BOT_DECLINE if delta is not None else BOT_HELP
+
     if delta is not None:
-        if mention_targets_self(message):
-            return BOT_DECLINE
         mention = extract_mention(text, message)
         if not mention:
-            return "請 @ 對象，例如：-1 @小明 遲到 或 +1 @老王 買手搖"
+            return "請 @ 對象，例如：@小明 -1 遲到 或 +1 @老王 買手搖"
         user_id, display_name, remaining = mention
         reason = extract_reason(remaining, delta)
         recorder_user_id = source.get("userId", "unknown")
         return add_point(client, group, recorder_user_id, delta, user_id, display_name, reason)
-
-    if mention_targets_self(message):
-        return BOT_HELP
 
     return None

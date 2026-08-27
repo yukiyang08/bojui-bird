@@ -19,6 +19,7 @@ from app.logic import (
     parse_point_delta,
     parse_settlement_command,
     parse_target_command,
+    without_first_mention,
 )
 
 
@@ -41,7 +42,18 @@ def test_mention_targets_self():
 def test_parse_point_delta():
     assert parse_point_delta("+1 @小明 遲到") == 1
     assert parse_point_delta("-2 @老王 買手搖") == -2
+    assert parse_point_delta("+1") == 1  # no reason, delta at end of string
     assert parse_point_delta("!排行榜") is None
+    assert parse_point_delta("@小明 +1 遲到") is None  # mention-first: not at the head
+
+
+def test_without_first_mention():
+    # "@小明 +1 遲到" -> mention span [0,3) removed -> "+1 遲到"
+    text = "@小明 +1 遲到"
+    message = {"mention": {"mentionees": [{"index": 0, "length": 3, "userId": "U9"}]}}
+    assert without_first_mention(text, message) == "+1 遲到"
+    assert parse_point_delta(without_first_mention(text, message)) == 1
+    assert without_first_mention("!排行榜", {}) is None
 
 
 def test_extract_reason():
@@ -150,6 +162,7 @@ if __name__ == "__main__":
     test_extract_mention()
     test_mention_targets_self()
     test_parse_point_delta()
+    test_without_first_mention()
     test_extract_reason()
     test_parse_settlement_command()
     test_parse_target_command()

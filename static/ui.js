@@ -52,6 +52,23 @@ function buzz(pattern) {
   try { navigator.vibrate && navigator.vibrate(pattern); } catch (e) {}
 }
 
+/* 若頁面是在 LINE App 內、從聊天室開啟的，就把一則通知發回該聊天室。
+   在瀏覽器 / 沒有 chat_message.write 權限時靜默略過。 */
+async function notifyChat(text) {
+  try {
+    if (window.liff && liff.isInClient && liff.isInClient()) {
+      await liff.sendMessages([{ type: "text", text }]);
+    }
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function reasonTag(s) {
+  const r = (s || "").trim();
+  return r ? `（${r}）` : "";
+}
+
 /* ---------- chrome ---------- */
 
 function initChrome() {
@@ -397,10 +414,12 @@ function openEditSheet(kind, id) {
     err.textContent = "";
     try {
       const delta = getDelta();
-      await apiCall("PATCH", `/api/records/${rec.id}`, { delta, reason: reason.value });
+      const res = await apiCall("PATCH", `/api/records/${rec.id}`, { delta, reason: reason.value });
       close();
       await reloadData();
       celebrate(delta);
+      const total = res && res.total_points != null ? ` · 目前 ${res.total_points} 點` : "";
+      notifyChat(`✏️ 改了 ${rec.display_name} 的紀錄：${delta > 0 ? "+" : ""}${delta}${reasonTag(reason.value)}${total}`);
     } catch (e) {
       err.textContent = e.message;
       setBusy(el, false);
@@ -415,6 +434,7 @@ function openEditSheet(kind, id) {
       buzz(30);
       close();
       await reloadData();
+      notifyChat(`🗑️ 刪掉 ${rec.display_name} 的一筆紀錄（原 ${rec.delta > 0 ? "+" : ""}${rec.delta}）`);
     } catch (e) {
       err.textContent = e.message;
       setBusy(el, false);
@@ -447,7 +467,8 @@ function openAddSheet() {
     err.textContent = "";
     try {
       const delta = getDelta();
-      await apiCall("POST", "/api/records", {
+      const name = member.options[member.selectedIndex].text;
+      const res = await apiCall("POST", "/api/records", {
         line_group_id: state.groupId,
         target_user_id: member.value,
         delta,
@@ -456,6 +477,8 @@ function openAddSheet() {
       close();
       await reloadData();
       celebrate(delta);
+      const total = res && res.total_points != null ? ` · 目前 ${res.total_points} 點` : "";
+      notifyChat(`📝 ${name} ${delta > 0 ? "+" : ""}${delta}${reasonTag(reason.value)}${total}（記於排行榜頁）`);
     } catch (e) {
       err.textContent = e.message;
       setBusy(el, false);
@@ -488,6 +511,7 @@ function openTargetSheet() {
       await apiCall("PUT", "/api/target", { line_group_id: state.groupId, amount });
       close();
       await reloadData();
+      notifyChat(`🍜 大餐目標金額設為 $${amount.toLocaleString()}`);
     } catch (e) {
       err.textContent = e.message;
       setBusy(el, false);
