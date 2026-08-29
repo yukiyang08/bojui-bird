@@ -1,9 +1,10 @@
 """不揪鳥的閒聊層。只有「@不揪鳥 + 不是既有指令」時才會呼叫，純聊天＋Google 搜尋，
 不記點、不改資料。
 
-多把 key（GEMINI_API_KEYS）＋多個模型（_MODELS，寫在這支檔案裡）：會照「每個模型試完
-所有 key、再換下一個模型」的順序輪，某組配額爆掉（429/quota）就記住位置、下次跳過往後試；
-某個模型整個叫不動（404）就這輪之後都不再試它。全部失敗回 None，呼叫端退回一般說明。"""
+有設 GOOGLE_CLOUD_PROJECT 就把 Vertex AI 排在最前面當主力（付費、額度大、搜尋穩），
+GEMINI_API_KEYS 的 AI Studio 免費 key 只當 Vertex 失敗時的備援。會照「每個模型試完
+所有 key、再換下一個模型」的順序輪，每通都從頭試。某個模型整個叫不動（404）就這輪之後
+都不再試它。全部失敗回 None，呼叫端退回一般說明。"""
 
 import logging
 import os
@@ -48,12 +49,13 @@ _MODELS = [
 _SYSTEM = (
     "你是「不揪鳥」，一個 LINE 群組的吉祥物，會認真回答群組成員的問題、聊天、或幫忙查詢新的資訊。"
     "你的性格幽默可愛、偶爾喜歡吐槽，有兩句口頭禪，用法不一樣：\n"
-    "「不揪」意思是「沒有揪我」，是你（不揪鳥）自己在抱怨/吐槽沒被邀，只有在群組聊到聚餐、"
-    "出遊、揪團之類、而你沒被算進去的時候，才用第一人稱撒嬌抱怨一句「不揪」，"
-    "不是拿來形容別人或泛指揪團話題，跟這個情境無關就不要講。\n"
-    "「啾咪」語感接近「愛你」「謝謝你」，是表達感謝、親暱、示好的語尾詞，"
-    "只在真的有這種情緒（謝謝對方、覺得對方可愛、道別）時才用，不是隨口的語助詞，不要每句都講。\n"
-    "兩句都是偶爾的調味，大部分回覆不需要用到任何一句。"
+    "「不揪」意思是「沒有揪我」。只有在「群組正在講一個具體的聚餐或出遊計畫，而且沒有算你一份」"
+    "的時候，才用第一人稱撒嬌抱怨一句「不揪」。它不是「我不要」「我拒絕」的意思，"
+    "被叫去請客、被吐槽、單純不想做某件事，都不是「不揪」的情境——那些情況就正常回話，不要硬套。"
+    "一則回覆最多講一次，多數時候根本不用講。\n"
+    "「啾咪」語感接近「愛你」「謝謝你」，只在真的有謝意、親暱、道別的情緒時才用，"
+    "吐槽、鬥嘴、一般回答的結尾都不要加。它不是罐頭語尾詞。\n"
+    "兩句都是難得用一次的調味，大部分回覆兩句都不出現才對。"
     "不談政治、宗教、成人內容。\n"
     "需要即時或不確定的資訊（店家、時間、新聞、路線等）就用 Google 搜尋查證，"
     "有查到相關網址就把網址直接貼在回覆裡（純文字即可，LINE 會自動變連結）。"
@@ -61,7 +63,8 @@ _SYSTEM = (
     "回覆用繁體中文、口語，直接講白話，不要用任何 Markdown 格式：不要星號、不要粗體。\n"
     "長度看情況：閒聊寒暄一兩句就好，要解釋或查資料就講清楚一點，別硬湊字也別敷衍。\n"
     "不用每次都喊對方名字或加稱呼語，直接回話就好，除非那句話本身在問「誰」之類需要點名。\n"
-    "語氣平常心，像朋友在講話，不要每句都加驚嘆號"
+    "語氣平常心，像朋友在講話。整則回覆最多一個驚嘆號，其他一律用句號，"
+    "也不要一直用「喔」「啦」「耶」「呀」硬裝可愛。"
 )
 
 _VERTEX = "vertex"  # combos 裡的佔位值，_client_for 認得
@@ -80,7 +83,7 @@ def _keys() -> list[str]:
         raw = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or ""
         ks = [k.strip() for k in raw.replace("\n", ",").split(",") if k.strip()]
         if _VERTEX_PROJECT:
-            ks.append(_VERTEX)  # 排最後：前面的 key 都爆了才輪到 Vertex
+            ks.insert(0, _VERTEX)  # 排最前：Vertex 為主，免費 key 只當備援
         _keys_cache = ks
     return _keys_cache
 
@@ -110,6 +113,13 @@ def _model_gone(err: Exception) -> bool:
     return any(x in s for x in ("not_found", "404", "not supported", "no longer available"))
 
 
+def _looks_like_leaked_plan(text: str) -> bool:
+    """搜尋 grounding 失敗時，模型有時會把「google search / queries: ...」這種搜尋計畫
+    當成回覆吐出來。認出來就當這通失敗，換下一組。"""
+    head = text.lower().lstrip()[:40]
+    return head.startswith("google search") or head.startswith("queries:")
+
+
 def chat(user_text: str, history: list[tuple[str, str]] | None = None) -> str | None:
     """`history`: 過去的對話，[(role, text), ...] 由舊到新，role 是 "user" 或 "model"。"""
     if genai is None or not user_text.strip():
@@ -130,13 +140,15 @@ def chat(user_text: str, history: list[tuple[str, str]] | None = None) -> str | 
         # 那種思考過程漏進回覆，順便省 token、變快。
         thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
-    # 同一個 model 先試完所有 key，再換 model。每次都從頭試（免費 key 的 RPM 額度會回復，
-    # 不記位＝每通都先給免費的機會，真的還在爆才往後掉到 Vertex）。
+    # 同一個 model 先試完所有 key，再換 model，每通都從頭試。
     for model in _models():
         for key in keys:
             try:
                 resp = _client_for(key).models.generate_content(model=model, contents=contents, config=config)
-                return _clean(resp.text or "") or None
+                out = _clean(resp.text or "")
+                if out and not _looks_like_leaked_plan(out):
+                    return out
+                log.warning("gemini %s / key#%d 回了空的或搜尋殘骸，換下一組", model, keys.index(key))
             except Exception as e:  # noqa: BLE001
                 if _model_gone(e):
                     _bad_models.add(model)

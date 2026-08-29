@@ -187,6 +187,23 @@ def test_chat_history_turns():
     assert chat_history_turns([]) == []
 
 
+def test_gemini_clean_strips_markup():
+    from app.gemini import _clean
+
+    assert _clean("**很肥美**啦") == "很肥美啦"
+    assert _clean("第一句<br><br>第二句") == "第一句\n\n第二句"
+    assert _clean("# 標題\n- 條列一\n- 條列二") == "標題\n條列一\n條列二"
+    assert _clean("<b>粗</b>體") == "粗體"
+
+
+def test_gemini_rejects_leaked_search_plan():
+    from app.gemini import _looks_like_leaked_plan
+
+    assert _looks_like_leaked_plan("google search\nqueries:\n富基漁港 螃蟹 季節")
+    assert _looks_like_leaked_plan("  Queries: 富基漁港 萬里蟹")
+    assert not _looks_like_leaked_plan("秋天去富基漁港吃螃蟹最肥美，大概 9 到 12 月。")
+
+
 if __name__ == "__main__":
     test_extract_mention()
     test_mention_targets_self()
@@ -205,4 +222,6 @@ if __name__ == "__main__":
     test_bot_is_scored_but_never_pays()
     test_clean_record_edit()
     test_chat_history_turns()
+    test_gemini_clean_strips_markup()
+    test_gemini_rejects_leaked_search_plan()
     print("all tests passed")
