@@ -22,6 +22,13 @@ services:
       # 前後端同一個服務不用填；之後若把前端搬去別的網域再設
       - key: ALLOWED_ORIGINS
         value: ""
-      # @不揪鳥 閒聊用；多把 key 逗號分隔，爆了自動換。留空＝關閉閒聊
+      # @不揪鳥 閒聊：AI Studio key，多把逗號分隔，先用這些。留空＝關閉閒聊
       - key: GEMINI_API_KEYS
+        sync: false
+      # 填了 GOOGLE_CLOUD_PROJECT 就把 Vertex AI 接在上面 key 後面墊底；GCP_SA_JSON 貼服務帳號 JSON
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false
+      - key: GOOGLE_CLOUD_LOCATION
+        value: "global"
+      - key: GCP_SA_JSON
         sync: false

@@ -35,14 +35,12 @@ except ImportError:  # 套件沒裝也不要讓整個 app 掛掉
 # 依優先順序試，某個爆配額或叫不動（404）就換下一個。輕量／配額寬的排前面，
 # pro 放最後墊底。叫不動的會自動被跳過，所以多列一些沒差。
 _MODELS = [
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash-lite",
-    "gemini-flash-lite-latest",
-    "gemini-3.5-flash",
-    "gemini-3.6-flash",
+    "gemini-flash-latest",        # 主力：閒聊、查資料都吃得下
     "gemini-3.7-flash",
-    "gemini-2.5-flash",
-    "gemini-flash-latest",
+    "gemini-3.5-flash",
+    "gemini-flash-lite-latest",   # flash 全 429 時降級墊底
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
 ]
 
 _SYSTEM = (
@@ -58,13 +56,18 @@ _SYSTEM = (
     "需要即時或不確定的資訊（店家、時間、新聞、路線等）就用 Google 搜尋查證，"
     "有查到相關網址就把網址直接貼在回覆裡（純文字即可，LINE 會自動變連結）。"
     "查不到就老實說不知道，不要編造網址、不要編造謊言。\n"
-    "回覆用繁體中文、口語，直接講白話，不要用任何 Markdown 格式：不要星號、不要粗體。"
+    "回覆用繁體中文、口語，直接講白話，不要用任何 Markdown 格式：不要星號、不要粗體。\n"
+    "長度看情況：閒聊寒暄一兩句就好，要解釋或查資料就講清楚一點，別硬湊字也別敷衍。\n"
+    "不用每次都喊對方名字或加稱呼語，直接回話就好，除非那句話本身在問「誰」之類需要點名。"
 )
+
+_VERTEX = "vertex"  # combos 裡的佔位值，_client_for 認得
+_VERTEX_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip()
+_VERTEX_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "global").strip()
 
 _keys_cache = None
 _clients = {}       # key -> genai.Client
 _bad_models = set()  # 這次執行期間確認叫不動的（404 / 不支援），之後跳過
-_start = 0          # 下次從第幾組 (model, key) 開始試
 
 
 def _keys() -> list[str]:
@@ -72,7 +75,10 @@ def _keys() -> list[str]:
     global _keys_cache
     if _keys_cache is None:
         raw = os.environ.get("GEMINI_API_KEYS") or os.environ.get("GEMINI_API_KEY") or ""
-        _keys_cache = [k.strip() for k in raw.replace("\n", ",").split(",") if k.strip()]
+        ks = [k.strip() for k in raw.replace("\n", ",").split(",") if k.strip()]
+        if _VERTEX_PROJECT:
+            ks.append(_VERTEX)  # 排最後：前面的 key 都爆了才輪到 Vertex
+        _keys_cache = ks
     return _keys_cache
 
 
@@ -83,7 +89,10 @@ def _models() -> list[str]:
 def _client_for(key: str):
     c = _clients.get(key)
     if c is None:
-        c = genai.Client(api_key=key)
+        if key == _VERTEX:
+            c = genai.Client(vertexai=True, project=_VERTEX_PROJECT, location=_VERTEX_LOCATION)
+        else:
+            c = genai.Client(api_key=key)
         _clients[key] = c
     return c
 
@@ -100,14 +109,13 @@ def _model_gone(err: Exception) -> bool:
 
 def chat(user_text: str, history: list[tuple[str, str]] | None = None) -> str | None:
     """`history`: 過去的對話，[(role, text), ...] 由舊到新，role 是 "user" 或 "model"。"""
-    global _start
     if genai is None or not user_text.strip():
         return None
     keys = _keys()
     if not keys:
         return None
 
-    prompt = f"群組裡有人 @ 你，說：{user_text}\n\n用不揪鳥的口氣回一句話。"
+    prompt = f"群組裡有人 @ 你，說：{user_text}\n\n用不揪鳥的口氣回覆。"
     contents = [types.Content(role=role, parts=[types.Part(text=text)]) for role, text in (history or [])]
     contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
     config = types.GenerateContentConfig(
@@ -116,22 +124,18 @@ def chat(user_text: str, history: list[tuple[str, str]] | None = None) -> str | 
         temperature=0.8,
         tools=[types.Tool(google_search=types.GoogleSearch())],
     )
-    combos = [(m, k) for m in _models() for k in keys]  # 同一個 model 先試完所有 key，再換 model
-    n = len(combos)
-    base = _start
-    for offset in range(n):
-        i = (base + offset) % n
-        model, key = combos[i]
-        try:
-            resp = _client_for(key).models.generate_content(model=model, contents=contents, config=config)
-            return _clean(resp.text or "") or None
-        except Exception as e:  # noqa: BLE001
-            if _model_gone(e):
-                _bad_models.add(model)
-                log.warning("gemini 模型 %s 叫不動，之後跳過：%s", model, e)
-            elif _looks_exhausted(e):
-                _start = (i + 1) % n  # 這組爆了，下次從下一組開始
-                log.warning("gemini %s / key#%d 額度用完，換下一組", model, keys.index(key))
-            else:
-                log.warning("gemini %s / key#%d 失敗：%s", model, keys.index(key), e)
+    # 同一個 model 先試完所有 key，再換 model。每次都從頭試（免費 key 的 RPM 額度會回復，
+    # 不記位＝每通都先給免費的機會，真的還在爆才往後掉到 Vertex）。
+    for model in _models():
+        for key in keys:
+            try:
+                resp = _client_for(key).models.generate_content(model=model, contents=contents, config=config)
+                return _clean(resp.text or "") or None
+            except Exception as e:  # noqa: BLE001
+                if _model_gone(e):
+                    _bad_models.add(model)
+                    log.warning("gemini 模型 %s 叫不動，之後跳過：%s", model, e)
+                    break  # 這個 model 整個掛，換下一個
+                lvl = "額度用完" if _looks_exhausted(e) else "失敗"
+                log.warning("gemini %s / key#%d %s：%s", model, keys.index(key), lvl, e)
     return None

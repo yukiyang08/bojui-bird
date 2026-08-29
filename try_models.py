@@ -13,7 +13,7 @@ keys = gemini._keys()
 print(f"{len(keys)} 把 key\n")
 
 for ki, key in enumerate(keys):
-    c = genai.Client(api_key=key)
+    c = gemini._client_for(key)
     print(f"=== key #{ki} ({key[:8]}…) ===")
     for m in gemini._MODELS:
         try:

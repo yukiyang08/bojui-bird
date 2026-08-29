@@ -5,6 +5,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+if os.environ.get("GCP_SA_JSON"):
+    import pathlib
+
+    _sa = pathlib.Path("/tmp/gcp-sa.json")
+    _sa.write_text(os.environ["GCP_SA_JSON"])
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(_sa)
+
 log = logging.getLogger("uvicorn.error")
 
 from fastapi import Body, FastAPI, Header, HTTPException, Request
