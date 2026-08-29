@@ -13,8 +13,10 @@ log = logging.getLogger("uvicorn.error")
 
 
 def _clean(text: str) -> str:
-    """LINE 只顯示純文字，把 Markdown 記號拿掉：星號、反引號、標題井號、條列符號。"""
+    """LINE 只顯示純文字，把 Markdown 記號跟偶爾冒出的 HTML 標籤拿掉。"""
     t = (text or "").strip()
+    t = re.sub(r"<br\s*/?>", "\n", t, flags=re.I)  # 模型有時用 <br> 當換行
+    t = re.sub(r"<[^>]+>", "", t)                   # 其他 HTML 標籤直接拔
     t = t.replace("*", "").replace("`", "")
     t = re.sub(r"^\s{0,3}#{1,6}\s*", "", t, flags=re.M)   # # 標題
     t = re.sub(r"^\s*[-–—•]\s+", "", t, flags=re.M)        # - 條列
@@ -58,7 +60,8 @@ _SYSTEM = (
     "查不到就老實說不知道，不要編造網址、不要編造謊言。\n"
     "回覆用繁體中文、口語，直接講白話，不要用任何 Markdown 格式：不要星號、不要粗體。\n"
     "長度看情況：閒聊寒暄一兩句就好，要解釋或查資料就講清楚一點，別硬湊字也別敷衍。\n"
-    "不用每次都喊對方名字或加稱呼語，直接回話就好，除非那句話本身在問「誰」之類需要點名。"
+    "不用每次都喊對方名字或加稱呼語，直接回話就好，除非那句話本身在問「誰」之類需要點名。\n"
+    "語氣平常心，像朋友在講話，不要每句都加驚嘆號"
 )
 
 _VERTEX = "vertex"  # combos 裡的佔位值，_client_for 認得
@@ -120,9 +123,12 @@ def chat(user_text: str, history: list[tuple[str, str]] | None = None) -> str | 
     contents.append(types.Content(role="user", parts=[types.Part(text=prompt)]))
     config = types.GenerateContentConfig(
         system_instruction=_SYSTEM,
-        max_output_tokens=2048,  # 有些型號會用掉一部分做內部思考，留寬一點
+        max_output_tokens=2048,
         temperature=0.8,
         tools=[types.Tool(google_search=types.GoogleSearch())],
+        # 關掉內部思考：吉祥物閒聊用不到，還會偶爾把「google search / queries: ...」
+        # 那種思考過程漏進回覆，順便省 token、變快。
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
     )
     # 同一個 model 先試完所有 key，再換 model。每次都從頭試（免費 key 的 RPM 額度會回復，
     # 不記位＝每通都先給免費的機會，真的還在爆才往後掉到 Vertex）。
