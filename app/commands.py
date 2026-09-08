@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta, timezone
 
 from app import gemini
 from app.logic import (
@@ -21,6 +22,7 @@ from app.logic import (
 )
 
 CHAT_HISTORY_TURNS = 10  # 每人每群組留最近幾輪（user+model 算一輪）當 Gemini 的對話上下文
+CHAT_HISTORY_WINDOW_MIN = 30  # 超過這麼久沒對話就當新話題，不再帶舊 context
 
 BOT_DECLINE = "我只負責記帳 不負責付錢喔 不揪不揪"
 
@@ -79,11 +81,15 @@ def _write_dinner_target(client, group_id: str, amount: int) -> None:
 
 
 def _read_chat_history(client, group_id: str, user_id: str) -> list[tuple[str, str]]:
+    # 只帶「最近這段」對話：隔太久（超過 CHAT_HISTORY_WINDOW_MIN 分鐘）沒講話，就當新話題
+    # 從頭開始，不然舊對話會一直被塞進 context，害不揪鳥答非所問、翻舊帳。
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=CHAT_HISTORY_WINDOW_MIN)).isoformat()
     rows = (
         client.table("chat_history")
         .select("role,text")
         .eq("group_id", group_id)
         .eq("line_user_id", user_id)
+        .gte("created_at", cutoff)
         .order("created_at", desc=True)
         .limit(CHAT_HISTORY_TURNS * 2)
         .execute()
@@ -93,8 +99,20 @@ def _read_chat_history(client, group_id: str, user_id: str) -> list[tuple[str, s
 
 
 def _write_chat_turns(client, group_id: str, user_id: str, turns: list[tuple[str, str]]) -> None:
+    # 明確給遞增的 created_at：一次 insert 多筆時 now() 會一模一樣，讀回來 user/model
+    # 的先後順序就不保證，餵給 Gemini 的對話就會角色錯位。
+    base = datetime.now(timezone.utc)
     client.table("chat_history").insert(
-        [{"group_id": group_id, "line_user_id": user_id, "role": role, "text": text} for role, text in turns]
+        [
+            {
+                "group_id": group_id,
+                "line_user_id": user_id,
+                "role": role,
+                "text": text,
+                "created_at": (base + timedelta(milliseconds=i)).isoformat(),
+            }
+            for i, (role, text) in enumerate(turns)
+        ]
     ).execute()
 
 

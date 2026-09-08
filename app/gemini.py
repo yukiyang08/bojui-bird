@@ -134,7 +134,7 @@ def chat(user_text: str, history: list[tuple[str, str]] | None = None) -> str | 
     config = types.GenerateContentConfig(
         system_instruction=_SYSTEM,
         max_output_tokens=2048,
-        temperature=0.8,
+        temperature=0.6,  # 太高會太跳、太多驚嘆號
         tools=[types.Tool(google_search=types.GoogleSearch())],
         # 關掉內部思考：吉祥物閒聊用不到，還會偶爾把「google search / queries: ...」
         # 那種思考過程漏進回覆，順便省 token、變快。

@@ -204,6 +204,76 @@ def test_gemini_rejects_leaked_search_plan():
     assert not _looks_like_leaked_plan("秋天去富基漁港吃螃蟹最肥美，大概 9 到 12 月。")
 
 
+class _FakeChatTable:
+    """夠用的 supabase-py 假物件：只支援 chat_history 的 insert / 讀最近幾筆。"""
+
+    def __init__(self):
+        self.rows = []
+        self._limit = None
+
+    def table(self, _):
+        return self
+
+    def select(self, _):
+        return self
+
+    def eq(self, *_):
+        return self
+
+    def gte(self, field, value):
+        self.rows = [r for r in self.rows if r[field] >= value]
+        return self
+
+    def order(self, *_a, **_k):
+        return self
+
+    def limit(self, n):
+        self._limit = n
+        return self
+
+    def insert(self, rows):
+        self.rows.extend(rows)
+        return self
+
+    def execute(self):
+        import types as _t
+
+        ordered = sorted(self.rows, key=lambda r: r["created_at"], reverse=True)
+        return _t.SimpleNamespace(data=[{"role": r["role"], "text": r["text"]} for r in ordered[: self._limit]])
+
+
+def test_chat_history_roundtrip_keeps_turn_order():
+    from app import commands
+
+    import time
+
+    c = _FakeChatTable()
+    commands._write_chat_turns(c, "g1", "u1", [("user", "早"), ("model", "早安")])
+    time.sleep(0.01)  # 真實對話兩輪之間隔著人打字的時間
+    commands._write_chat_turns(c, "g1", "u1", [("user", "富基漁港"), ("model", "秋天去")])
+
+    assert commands._read_chat_history(c, "g1", "u1") == [
+        ("user", "早"),
+        ("model", "早安"),
+        ("user", "富基漁港"),
+        ("model", "秋天去"),
+    ]
+
+
+def test_chat_history_drops_stale_turns():
+    from datetime import datetime, timedelta, timezone
+
+    from app import commands
+
+    c = _FakeChatTable()
+    old = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+    c.rows = [
+        {"group_id": "g1", "line_user_id": "u1", "role": "user", "text": "上週的事", "created_at": old},
+        {"group_id": "g1", "line_user_id": "u1", "role": "model", "text": "舊回覆", "created_at": old},
+    ]
+    assert commands._read_chat_history(c, "g1", "u1") == []
+
+
 if __name__ == "__main__":
     test_extract_mention()
     test_mention_targets_self()
@@ -224,4 +294,6 @@ if __name__ == "__main__":
     test_chat_history_turns()
     test_gemini_clean_strips_markup()
     test_gemini_rejects_leaked_search_plan()
+    test_chat_history_roundtrip_keeps_turn_order()
+    test_chat_history_drops_stale_turns()
     print("all tests passed")
